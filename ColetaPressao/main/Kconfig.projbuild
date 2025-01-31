@@ -1,0 +1,15 @@
+menu "ColetaPressao Config"
+
+    config COLETA_PRESSAO_SCL_PIN
+        int "SCL Pin"
+        default 23
+        help
+            Pino SCL do protocolo I2C
+
+    config COLETA_PRESSAO_SDA_PIN
+        int "SCL Pin"
+        default 22
+        help
+            Pino SDA do protocolo I2C
+
+endmenu
