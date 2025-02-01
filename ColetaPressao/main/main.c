@@ -8,6 +8,8 @@
 
 #include <esp_check.h>
 
+#include "ads111x.h"
+
 //============================================
 //  VARS
 //============================================
@@ -55,7 +57,6 @@ static void vTaskADS1115(void *pvArg)
 {
     while(1)
     {
-        ESP_LOGW( "[ADS1115]","%s\n", esp_err_to_name(i2c_master_probe(xI2C_master_handle, 0x48, 1000)));
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
