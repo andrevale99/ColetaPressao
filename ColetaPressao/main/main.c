@@ -11,7 +11,7 @@
 #include "ads111x.h"
 
 //============================================
-//  VARS
+//  VARS GLOBAIS
 //============================================
 
 //============================================
@@ -20,12 +20,13 @@
 
 /**
  *  @brief Task para o ADS1115
- * 
- *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma 
+ *
+ *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
  *  configuracao
  */
 static void vTaskADS1115(void *pvArg);
 TaskHandle_t xTaskHandle_ADS115 = NULL;
+const char *TAG_ADS = "[ADS111]";
 
 /**
  *  @brief Funcao de Configuracao do I2C
@@ -40,11 +41,11 @@ void app_main(void)
 {
     I2C_config();
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024*1, 
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 1,
                 NULL, 1, &xTaskHandle_ADS115);
 
     // Caso precise da appmain
-    while(1)
+    while (1)
     {
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
@@ -55,8 +56,32 @@ void app_main(void)
 //============================================
 static void vTaskADS1115(void *pvArg)
 {
-    while(1)
+    ads111x_struct_t ads;
+    uint8_t reg = 0;
+
+    ESP_ERROR_CHECK(ads111x_begin(&xI2C_master_handle, ADS111X_ADDR, &ads));
+
+    ESP_ERROR_CHECK(ads111x_set_gain(ADS111X_GAIN_4V096, &ads));
+    reg = ads111x_get_conf_reg(&ads);
+    ESP_LOGW(TAG_ADS, "GAIN: %d", reg);
+
+    ESP_ERROR_CHECK(ads111x_set_mode(ADS111X_MODE_CONTINUOUS, &ads));
+    reg = ads111x_get_conf_reg(&ads);
+    ESP_LOGW(TAG_ADS, "MODE: %d", reg);
+
+    ESP_ERROR_CHECK(ads111x_set_data_rate(ADS111X_DATA_RATE_32, &ads));
+    reg = ads111x_get_conf_reg(&ads);
+    ESP_LOGW(TAG_ADS, "DATA_RATE: %d", reg);
+
+    ESP_ERROR_CHECK(ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads));
+    reg = ads111x_get_conf_reg(&ads);
+    ESP_LOGW(TAG_ADS, "MUX: %d", reg);
+
+    while (1)
     {
+        // ads111x_get_conversion(&ads);
+        // ESP_LOGI(TAG_ADS, "Conversion: %d \t %X", ads.conversion, ads.conversion);
+
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

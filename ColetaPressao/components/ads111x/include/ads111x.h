@@ -1,5 +1,5 @@
 /**
- * @brief Biblioteca baseada na ESP-IDF-ib de 
+ * @brief Biblioteca baseada na ESP-IDF-ib de
  * @author UncleRus
  */
 
@@ -13,10 +13,16 @@
 #define ADS111X_ADDR_SCL 0x4B
 #define ADS111X_ADDR_SDA 0x4A
 
-#define CONVERSION_REG 0x00
-#define CONFIG_REG 0x01
-#define LO_THRESH_REG 0x02
-#define HI_THRESH_REG 0x03
+#define ADS111X_ADDR_CONVERSION_REG 0x00
+#define ADS111X_ADDR_CONFIG_REG 0x01
+#define ADS111X_ADDR_LO_THRESH_REG 0x02
+#define ADS111X_ADDR_HI_THRESH_REG 0x03
+
+#define OFFSET_DATA_RATE 5
+#define OFFSET_MODE 8
+#define OFFSET_GAIN 9
+#define OFFSET_INPUT_MUX 12
+#define OFFSET_OPERATION_STATUS 15
 
 typedef enum
 {
@@ -57,7 +63,7 @@ typedef enum
 typedef enum
 {
     ADS111X_MODE_CONTINUOUS = 0, //!< Continuous conversion mode
-    ADS111X_MODE_SINGLE_SHOT    //!< Power-down single-shot mode (default)
+    ADS111X_MODE_SINGLE_SHOT     //!< Power-down single-shot mode (default)
 } ads111x_mode_t;
 
 typedef enum
@@ -86,10 +92,22 @@ typedef enum
     ADS111X_COMP_QUEUE_DISABLED //!< Disable comparator (default)
 } ads111x_comp_queue_t;
 
-i2c_master_dev_handle_t xads111x_dev_handle = NULL;
+typedef struct
+{
+    uint16_t conversion;
 
-esp_err_t ads111x_begin(i2c_master_bus_handle_t *mastet_handle, uint8_t address);
-esp_err_t ads111x_get_conversion(void);
-esp_err_t ads111x_set_config(void);
+    i2c_master_dev_handle_t dev_handle;
+
+} ads111x_struct_t;
+
+esp_err_t ads111x_begin(i2c_master_bus_handle_t *mastet_handle, uint8_t address, ads111x_struct_t *ads);
+esp_err_t ads111x_set_gain(ads111x_gain_t gain, ads111x_struct_t *ads);
+esp_err_t ads111x_set_mode(ads111x_mode_t mode, ads111x_struct_t *ads);
+esp_err_t ads111x_set_data_rate(ads111x_data_rate_t rate, ads111x_struct_t *ads);
+esp_err_t ads111x_set_input_mux(ads111x_mux_t mux, ads111x_struct_t *ads);
+
+uint8_t ads111x_get_conf_reg(ads111x_struct_t *ads);
+
+void ads111x_get_conversion(ads111x_struct_t *ads);
 
 #endif
