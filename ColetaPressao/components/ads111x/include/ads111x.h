@@ -19,10 +19,10 @@
 #define ADS111X_ADDR_HI_THRESH_REG 0x03
 
 #define OFFSET_DATA_RATE 5
-#define OFFSET_MODE 8
-#define OFFSET_GAIN 9
-#define OFFSET_INPUT_MUX 12
-#define OFFSET_OPERATION_STATUS 15
+#define OFFSET_MODE 0
+#define OFFSET_GAIN 1
+#define OFFSET_INPUT_MUX 4
+#define OFFSET_OPERATION_STATUS 7
 
 typedef enum
 {
@@ -105,8 +105,6 @@ esp_err_t ads111x_set_gain(ads111x_gain_t gain, ads111x_struct_t *ads);
 esp_err_t ads111x_set_mode(ads111x_mode_t mode, ads111x_struct_t *ads);
 esp_err_t ads111x_set_data_rate(ads111x_data_rate_t rate, ads111x_struct_t *ads);
 esp_err_t ads111x_set_input_mux(ads111x_mux_t mux, ads111x_struct_t *ads);
-
-uint8_t ads111x_get_conf_reg(ads111x_struct_t *ads);
 
 void ads111x_get_conversion(ads111x_struct_t *ads);
 

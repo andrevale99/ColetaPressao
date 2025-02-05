@@ -41,7 +41,7 @@ void app_main(void)
 {
     I2C_config();
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 1,
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
                 NULL, 1, &xTaskHandle_ADS115);
 
     // Caso precise da appmain
@@ -57,30 +57,23 @@ void app_main(void)
 static void vTaskADS1115(void *pvArg)
 {
     ads111x_struct_t ads;
-    uint8_t reg = 0;
+    uint8_t buffer[3] = {0,0,0};
 
-    ESP_ERROR_CHECK(ads111x_begin(&xI2C_master_handle, ADS111X_ADDR, &ads));
+    ESP_LOGI(TAG_ADS, "BEGIN: %s", esp_err_to_name(ads111x_begin(&xI2C_master_handle, ADS111X_ADDR, &ads)));
+    ads111x_set_gain(ADS111X_GAIN_0V256_3, &ads);
+    ads111x_set_mode(ADS111X_MODE_SINGLE_SHOT, &ads);
 
-    ESP_ERROR_CHECK(ads111x_set_gain(ADS111X_GAIN_4V096, &ads));
-    reg = ads111x_get_conf_reg(&ads);
-    ESP_LOGW(TAG_ADS, "GAIN: %d", reg);
+    buffer[0] = ADS111X_ADDR_CONFIG_REG;
+    i2c_master_transmit_receive(ads.dev_handle,
+                                &buffer[0], 1,
+                                &buffer[1], 2,
+                                250);
 
-    ESP_ERROR_CHECK(ads111x_set_mode(ADS111X_MODE_CONTINUOUS, &ads));
-    reg = ads111x_get_conf_reg(&ads);
-    ESP_LOGW(TAG_ADS, "MODE: %d", reg);
-
-    ESP_ERROR_CHECK(ads111x_set_data_rate(ADS111X_DATA_RATE_32, &ads));
-    reg = ads111x_get_conf_reg(&ads);
-    ESP_LOGW(TAG_ADS, "DATA_RATE: %d", reg);
-
-    ESP_ERROR_CHECK(ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads));
-    reg = ads111x_get_conf_reg(&ads);
-    ESP_LOGW(TAG_ADS, "MUX: %d", reg);
+    ESP_LOGW(TAG_ADS, "MSB: %X", buffer[1]);
+    ESP_LOGW(TAG_ADS, "LSB: %X", buffer[2]);
 
     while (1)
     {
-        // ads111x_get_conversion(&ads);
-        // ESP_LOGI(TAG_ADS, "Conversion: %d \t %X", ads.conversion, ads.conversion);
 
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
