@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -13,7 +14,8 @@
 //============================================
 //  VARS GLOBAIS
 //============================================
-
+int16_t adc0 = 0;
+int16_t adc1 = 0;
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
@@ -25,14 +27,18 @@
  *  configuracao
  */
 static void vTaskADS1115(void *pvArg);
-TaskHandle_t xTaskHandle_ADS115 = NULL;
+TaskHandle_t handleTask_ADS115 = NULL;
 const char *TAG_ADS = "[ADS111]";
+
+static void vTaskProcessADS(void *pvArg);
+TaskHandle_t handleTask_ProcessADS = NULL;
+const char *TAG_PROCESS_ADS = "[PROCESS_ADS]";
 
 /**
  *  @brief Funcao de Configuracao do I2C
  */
 static esp_err_t I2C_config(void);
-i2c_master_bus_handle_t xI2C_master_handle = NULL;
+i2c_master_bus_handle_t handle_I2Cmaster = NULL;
 
 //============================================
 //  MAIN
@@ -42,7 +48,10 @@ void app_main(void)
     I2C_config();
 
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
-                NULL, 1, &xTaskHandle_ADS115);
+                NULL, 1, &handleTask_ADS115);
+
+    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTask_ProcessADS);
 
     // Caso precise da appmain
     while (1)
@@ -57,23 +66,75 @@ void app_main(void)
 static void vTaskADS1115(void *pvArg)
 {
     ads111x_struct_t ads;
-    uint8_t buffer[3] = {0,0,0};
 
-    ESP_LOGI(TAG_ADS, "BEGIN: %s", esp_err_to_name(ads111x_begin(&xI2C_master_handle, ADS111X_ADDR, &ads)));
-    ads111x_set_gain(ADS111X_GAIN_0V256_3, &ads);
+    ESP_LOGI(TAG_ADS, "BEGIN: %s", esp_err_to_name(ads111x_begin(&handle_I2Cmaster, ADS111X_ADDR, &ads)));
+    ads111x_set_gain(ADS111X_GAIN_4V096, &ads);
     ads111x_set_mode(ADS111X_MODE_SINGLE_SHOT, &ads);
-
-    buffer[0] = ADS111X_ADDR_CONFIG_REG;
-    i2c_master_transmit_receive(ads.dev_handle,
-                                &buffer[0], 1,
-                                &buffer[1], 2,
-                                250);
-
-    ESP_LOGW(TAG_ADS, "MSB: %X", buffer[1]);
-    ESP_LOGW(TAG_ADS, "LSB: %X", buffer[2]);
+    ads111x_set_data_rate(ADS111X_DATA_RATE_32, &ads);
+    ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
 
     while (1)
     {
+        ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
+        ads111x_get_conversion_sigle_ended(&ads);
+        adc0 = ads.conversion;
+        ESP_LOGI(TAG_ADS, "ADC_0: %d", adc0);
+
+        vTaskDelay(pdMS_TO_TICKS(500));
+
+        ads111x_set_input_mux(ADS111X_MUX_1_GND, &ads);
+        ads111x_get_conversion_sigle_ended(&ads);
+        adc1 = ads.conversion;
+        ESP_LOGI(TAG_ADS, "ADC_1: %d", adc1);
+
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
+static void vTaskProcessADS(void *pvArg)
+{
+    float v_0 = 0.0;
+    float v_1 = 0.0;
+
+    float p_0 = 0.0;
+    float p_1 = 0.0;
+
+    float c_0 = 0.0;
+    float c_1 = 0.0;
+
+    int cont = 0;
+
+    while (1)
+    {
+        v_0 = (adc0 * 0.1875) / 1000;
+        v_1 = (adc1 * 0.1875) / 1000;
+
+        p_0 = (((v_0 / 5) - 0.04) / 0.018) + c_0;
+        p_1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
+
+        if (cont == 20)
+        {
+            if ((round(p_0 * 100) > 1) || (round(p_0 * 100) < -1))
+            {
+                vTaskDelay(pdMS_TO_TICKS(500));
+                c_0 = -p_0;
+            }
+            if ((round(p_1 * 100) > 1) || (round(p_1 * 100) < -1))
+            {
+                vTaskDelay(pdMS_TO_TICKS(500));
+                c_1 = -p_1;
+            }
+            else
+            {
+            }
+        }
+
+        if (cont < 101)
+        {
+            cont += 1;
+        }
+
+        ESP_LOGW(TAG_PROCESS_ADS, "P0: %f\nP1: %f", p_0, p_1);
 
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
@@ -90,7 +151,7 @@ static esp_err_t I2C_config(void)
         .flags.enable_internal_pullup = true,
     };
 
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &xI2C_master_handle));
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &handle_I2Cmaster));
 
     return ESP_OK;
 }
