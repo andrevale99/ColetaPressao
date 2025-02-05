@@ -108,8 +108,8 @@ esp_err_t ads111x_set_data_rate(ads111x_data_rate_t rate, ads111x_struct_t *ads)
         return xErrorCheck;
     }
 
-    buffer[1] &= ~(0x3 << OFFSET_DATA_RATE);
-    buffer[1] |= (rate << OFFSET_DATA_RATE);
+    buffer[2] &= ~(0x7 << OFFSET_DATA_RATE);
+    buffer[2] |= (rate << OFFSET_DATA_RATE);
 
     xErrorCheck = i2c_master_transmit(ads->dev_handle,
                                       &buffer[0], 3,
@@ -157,18 +157,44 @@ esp_err_t ads111x_set_input_mux(ads111x_mux_t mux, ads111x_struct_t *ads)
     return ESP_OK;
 }
 
-void ads111x_get_conversion(ads111x_struct_t *ads)
+void ads111x_get_conversion_continuos(ads111x_struct_t *ads)
+{
+    memset(&buffer[0], 0, (sizeof(uint8_t) * BUFFER_SIZE));
+
+    buffer[0] = ADS111X_ADDR_CONVERSION_REG;
+    i2c_master_transmit_receive(ads->dev_handle, &buffer[0], 1,
+                                &buffer[1], 2, TIMEOUT_MS);
+
+    ads->conversion = (buffer[1] << 8) | buffer[2];
+}
+
+void ads111x_get_conversion_sigle_ended(ads111x_struct_t *ads)
 {
     memset(&buffer[0], 0, (sizeof(uint8_t) * BUFFER_SIZE));
 
     buffer[0] = ADS111X_ADDR_CONFIG_REG;
 
-    if (buffer[0] & (1 << OFFSET_OPERATION_STATUS))
+    xErrorCheck = i2c_master_transmit_receive(ads->dev_handle,
+                                              &buffer[0], 1,
+                                              &buffer[1], 2,
+                                              TIMEOUT_MS);
+
+    buffer[1] |= (1 << OFFSET_OPERATION_STATUS);
+
+    xErrorCheck = i2c_master_transmit(ads->dev_handle,
+                                      &buffer[0], 3,
+                                      TIMEOUT_MS);
+
+    do
     {
-        buffer[0] = ADS111X_ADDR_CONVERSION_REG;
+        buffer[0] = ADS111X_ADDR_CONFIG_REG;
         i2c_master_transmit_receive(ads->dev_handle, &buffer[0], 1,
                                     &buffer[1], 2, TIMEOUT_MS);
+    } while (!(buffer[1] & (1 << OFFSET_OPERATION_STATUS)));
 
-        ads->conversion = (buffer[1] << 8) | buffer[2];
-    }
+    buffer[0] = ADS111X_ADDR_CONVERSION_REG;
+    i2c_master_transmit_receive(ads->dev_handle, &buffer[0], 1,
+                                &buffer[1], 2, TIMEOUT_MS);
+
+    ads->conversion = (buffer[1] << 8) | buffer[2];
 }

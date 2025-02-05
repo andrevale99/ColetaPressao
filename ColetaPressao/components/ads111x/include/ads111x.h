@@ -106,6 +106,7 @@ esp_err_t ads111x_set_mode(ads111x_mode_t mode, ads111x_struct_t *ads);
 esp_err_t ads111x_set_data_rate(ads111x_data_rate_t rate, ads111x_struct_t *ads);
 esp_err_t ads111x_set_input_mux(ads111x_mux_t mux, ads111x_struct_t *ads);
 
-void ads111x_get_conversion(ads111x_struct_t *ads);
+void ads111x_get_conversion_continuos(ads111x_struct_t *ads);
+void ads111x_get_conversion_sigle_ended(ads111x_struct_t *ads);
 
 #endif
