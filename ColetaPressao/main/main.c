@@ -54,10 +54,10 @@ void app_main(void)
                 NULL, 1, &handleTask_ProcessADS);
 
     // Caso precise da appmain
-    while (1)
-    {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    // while (1)
+    // {
+    //     vTaskDelay(pdMS_TO_TICKS(1000));
+    // }
 }
 
 //============================================
@@ -70,24 +70,19 @@ static void vTaskADS1115(void *pvArg)
     ESP_LOGI(TAG_ADS, "BEGIN: %s", esp_err_to_name(ads111x_begin(&handle_I2Cmaster, ADS111X_ADDR, &ads)));
     ads111x_set_gain(ADS111X_GAIN_4V096, &ads);
     ads111x_set_mode(ADS111X_MODE_SINGLE_SHOT, &ads);
-    ads111x_set_data_rate(ADS111X_DATA_RATE_32, &ads);
-    ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
+    ads111x_set_data_rate(ADS111X_DATA_RATE_128, &ads);
 
     while (1)
     {
         ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
         ads111x_get_conversion_sigle_ended(&ads);
         adc0 = ads.conversion;
-        ESP_LOGI(TAG_ADS, "ADC_0: %d", adc0);
-
-        vTaskDelay(pdMS_TO_TICKS(500));
 
         ads111x_set_input_mux(ADS111X_MUX_1_GND, &ads);
         ads111x_get_conversion_sigle_ended(&ads);
         adc1 = ads.conversion;
-        ESP_LOGI(TAG_ADS, "ADC_1: %d", adc1);
 
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
@@ -114,12 +109,12 @@ static void vTaskProcessADS(void *pvArg)
 
         if (cont == 20)
         {
-            if ((round(p_0 * 100) > 1) || (round(p_0 * 100) < -1))
+            if (round(p_0 * 100) > 1 || round(p_0 * 100) < -1)
             {
                 vTaskDelay(pdMS_TO_TICKS(500));
                 c_0 = -p_0;
             }
-            if ((round(p_1 * 100) > 1) || (round(p_1 * 100) < -1))
+            if (round(p_1 * 100) > 1 || round(p_1 * 100) < -1)
             {
                 vTaskDelay(pdMS_TO_TICKS(500));
                 c_1 = -p_1;
@@ -134,9 +129,10 @@ static void vTaskProcessADS(void *pvArg)
             cont += 1;
         }
 
-        ESP_LOGW(TAG_PROCESS_ADS, "P0: %f\nP1: %f", p_0, p_1);
+        printf("%d\n", adc0);
+        fflush(stdout);
 
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
