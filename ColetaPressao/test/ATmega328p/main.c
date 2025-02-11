@@ -9,11 +9,6 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
-#define SetBit(port, pin) (port |= (1 << pin))
-#define ClrBit(port, pin) (port &= ~(1 << pin))
-#define ToggleBit(port, pin) (port ^= (1 << pin))
-#define TestBit(port, pin) (port & (1 << pin))
-
 #define BAUD 9600
 #define MYUBRR F_CPU / 16 / BAUD - 1
 
@@ -73,13 +68,10 @@ void USART_Init(unsigned int ubrr)
     /*Enable transmitter
     Desativa a interrupcao Data Empty
     Desativa a interrupcao complete*/
-    SetBit(UCSR0B, TXEN0);
-    ClrBit(UCSR0B, TXCIE0);
-    ClrBit(UCSR0B, UDRIE0);
+    UCSR0B |= (1<<TXEN0) | (1<<TXCIE0); 
 
     /* Set frame format: 8data, 2stop bit */
-    SetBit(UCSR0C, USBS0);
-    SetBit(UCSR0C, UCSZ00);
+    UCSR0C |= (1<<USBS0) | (1<<UCSZ00); 
 }
 
 void USART_Transmit(unsigned char data)
