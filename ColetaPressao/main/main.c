@@ -111,12 +111,12 @@ static void vTaskProcessADS(void *pvArg)
         {
             if (round(p_0 * 100) > 1 || round(p_0 * 100) < -1)
             {
-                vTaskDelay(pdMS_TO_TICKS(500));
+                // vTaskDelay(pdMS_TO_TICKS(500));
                 c_0 = -p_0;
             }
             if (round(p_1 * 100) > 1 || round(p_1 * 100) < -1)
             {
-                vTaskDelay(pdMS_TO_TICKS(500));
+            // vTaskDelay(pdMS_TO_TICKS(500));
                 c_1 = -p_1;
             }
             else
@@ -129,10 +129,10 @@ static void vTaskProcessADS(void *pvArg)
             cont += 1;
         }
 
-        printf("%d\n", adc0);
+        printf("%0.2f\n", p_0);
         fflush(stdout);
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
