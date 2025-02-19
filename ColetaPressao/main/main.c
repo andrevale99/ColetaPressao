@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <math.h>
+#include <sys/unistd.h>
+#include <sys/stat.h>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -7,15 +9,29 @@
 
 #include <driver/i2c_master.h>
 
+#include <esp_vfs_fat.h>
+#include <sdmmc_cmd.h>
+
 #include <esp_check.h>
 
 #include "ads111x.h"
+
+#define MOUNT_POINT "/sdcard"
+
+#define BUFFER_SIZE 256
 
 //============================================
 //  VARS GLOBAIS
 //============================================
 int16_t adc0 = 0;
 int16_t adc1 = 0;
+
+float p_0 = 0.0;
+float p_1 = 0.0;
+
+uint64_t contador_tabela = 0;
+
+char buffer[BUFFER_SIZE];
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
@@ -34,11 +50,21 @@ static void vTaskProcessADS(void *pvArg);
 TaskHandle_t handleTask_ProcessADS = NULL;
 const char *TAG_PROCESS_ADS = "[PROCESS_ADS]";
 
+static void vTaskSDMMC(void *pvArg);
+TaskHandle_t handleTask_SDMMC = NULL;
+const char *TAG_SDMMC = "[SDMMC]";
+
 /**
  *  @brief Funcao de Configuracao do I2C
  */
 static esp_err_t I2C_config(void);
 i2c_master_bus_handle_t handle_I2Cmaster = NULL;
+
+static esp_err_t SDMMC_config(void);
+esp_vfs_fat_sdmmc_mount_config_t mount_sd;
+sdmmc_card_t *card;
+sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 
 //============================================
 //  MAIN
@@ -46,12 +72,16 @@ i2c_master_bus_handle_t handle_I2Cmaster = NULL;
 void app_main(void)
 {
     I2C_config();
+    SDMMC_config();
 
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
                 NULL, 1, &handleTask_ADS115);
 
     xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTask_ProcessADS);
+
+    // xTaskCreate(vTaskSDMMC, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTask_SDMMC);
 
     // Caso precise da appmain
     // while (1)
@@ -70,7 +100,7 @@ static void vTaskADS1115(void *pvArg)
     ESP_LOGI(TAG_ADS, "BEGIN: %s", esp_err_to_name(ads111x_begin(&handle_I2Cmaster, ADS111X_ADDR, &ads)));
     ads111x_set_gain(ADS111X_GAIN_4V096, &ads);
     ads111x_set_mode(ADS111X_MODE_SINGLE_SHOT, &ads);
-    ads111x_set_data_rate(ADS111X_DATA_RATE_128, &ads);
+    ads111x_set_data_rate(ADS111X_DATA_RATE_32, &ads);
 
     while (1)
     {
@@ -82,7 +112,7 @@ static void vTaskADS1115(void *pvArg)
         ads111x_get_conversion_sigle_ended(&ads);
         adc1 = ads.conversion;
 
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(32));
     }
 }
 
@@ -90,9 +120,6 @@ static void vTaskProcessADS(void *pvArg)
 {
     float v_0 = 0.0;
     float v_1 = 0.0;
-
-    float p_0 = 0.0;
-    float p_1 = 0.0;
 
     float c_0 = 0.0;
     float c_1 = 0.0;
@@ -110,29 +137,59 @@ static void vTaskProcessADS(void *pvArg)
         if (cont == 20)
         {
             if (round(p_0 * 100) > 1 || round(p_0 * 100) < -1)
-            {
-                // vTaskDelay(pdMS_TO_TICKS(500));
                 c_0 = -p_0;
-            }
             if (round(p_1 * 100) > 1 || round(p_1 * 100) < -1)
-            {
-            // vTaskDelay(pdMS_TO_TICKS(500));
                 c_1 = -p_1;
-            }
-            else
-            {
-            }
         }
 
         if (cont < 101)
-        {
             cont += 1;
-        }
 
-        printf("%0.2f\n", p_0);
+        printf("%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
         fflush(stdout);
 
-    vTaskDelay(pdMS_TO_TICKS(10));
+        contador_tabela++;
+
+        vTaskDelay(pdMS_TO_TICKS(30));
+    }
+}
+
+static void vTaskSDMMC(void *pvArg)
+{
+    const char mount_point[] = MOUNT_POINT;
+
+    ESP_LOGW(TAG_SDMMC, "SD MMC mount: %s",
+             esp_err_to_name(esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card)));
+
+    // Card has been initialized, print its properties
+    sdmmc_card_print_info(stdout, card);
+
+    const char *file_name = MOUNT_POINT "/data.txt";
+
+    FILE *arq = fopen(file_name, "w");
+
+    while (1)
+    {
+        if (arq != NULL)
+            break;
+
+        ESP_LOGW(TAG_SDMMC, "ERRO ao abrir o arquivo");
+        vTaskDelay(1000);
+        arq = fopen(file_name, "w");
+    }
+
+    snprintf(buffer, BUFFER_SIZE, "Contador\tP0\tP1\n");
+    fprintf(arq, buffer);
+
+    fclose(arq);
+
+    while (1)
+    {
+        snprintf(buffer, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
+        fprintf(arq, buffer);
+        ESP_LOGW(TAG_SDMMC, "Bytes: %i", fprintf(arq, buffer));
+
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -148,6 +205,34 @@ static esp_err_t I2C_config(void)
     };
 
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &handle_I2Cmaster));
+
+    return ESP_OK;
+}
+
+static esp_err_t SDMMC_config(void)
+{
+    mount_sd.format_if_mount_failed = false;
+    mount_sd.max_files = 5;
+    mount_sd.max_files = 5;
+    mount_sd.allocation_unit_size = 16 * 1024;
+
+    spi_bus_config_t bus_cfg = {
+        .mosi_io_num = CONFIG_COLETA_PRESSAO_MOSI_PIN,
+        .miso_io_num = CONFIG_COLETA_PRESSAO_MISO_PIN,
+        .sclk_io_num = CONFIG_COLETA_PRESSAO_CLK_PIN,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 4000,
+    };
+
+    if (spi_bus_initialize(host.slot, &bus_cfg, SDSPI_DEFAULT_DMA) != ESP_OK)
+    {
+        ESP_LOGE("[SDMMC_config]", "Failed to initialize bus.");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    slot_config.gpio_cs = CONFIG_COLETA_PRESSAO_CS_PIN;
+    slot_config.host_id = host.slot;
 
     return ESP_OK;
 }

@@ -1,5 +1,29 @@
 menu "ColetaPressao Config"
 
+    config COLETA_PRESSAO_MISO_PIN
+        int "MISO Pin"
+        default  14
+        help 
+            Pino MISO do  protocolo SPI
+
+    config COLETA_PRESSAO_MOSI_PIN
+        int "MOSI Pin"
+        default  13
+        help 
+            Pino MOSI do  protocolo SPI
+
+    config COLETA_PRESSAO_CLK_PIN
+        int "CLK Pin"
+        default  2
+        help 
+            Pino CLK do  protocolo SPI
+
+    config COLETA_PRESSAO_CS_PIN
+        int "CS Pin"
+        default  5
+        help 
+            Pino CS do  protocolo SPI
+
     config COLETA_PRESSAO_SCL_PIN
         int "SCL Pin"
         default 23
