@@ -32,6 +32,8 @@ float p_1 = 0.01;
 uint64_t contador_tabela = 0;
 
 char buffer[BUFFER_SIZE];
+
+SemaphoreHandle_t Semaphore_ADS_to_SD = NULL;
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
@@ -76,11 +78,17 @@ i2c_master_bus_handle_t handle_I2Cmaster = NULL;
  *  @brief Funcao de Configuracao do SPI e
  *  manipulacao de arquivos com o SD
  */
-static esp_err_t SDMMC_config(void);
+static esp_err_t SD_config(void);
 esp_vfs_fat_sdmmc_mount_config_t mount_sd;
 sdmmc_card_t *card;
 sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+
+/**
+ *  @brief Funcao de Configuracao da UART
+ *  para poder enviar os comandos para ESP32
+ */
+static esp_err_t UART_config(void);
 
 //============================================
 //  MAIN
@@ -88,7 +96,9 @@ sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 void app_main(void)
 {
     I2C_config();
-    SDMMC_config();
+    SD_config();
+
+    Semaphore_ADS_to_SD = xSemaphoreCreateBinary();
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
     //             NULL, 1, &handleTask_ADS115);
@@ -98,12 +108,6 @@ void app_main(void)
 
     xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
                 NULL, 1, &handleTask_SDMMC);
-
-    // Caso precise da appmain
-    // while (1)
-    // {
-    //     vTaskDelay(pdMS_TO_TICKS(1000));
-    // }
 }
 
 //============================================
@@ -166,6 +170,8 @@ static void vTaskProcessADS(void *pvArg)
 
         contador_tabela++;
 
+        xSemaphoreGive(Semaphore_ADS_to_SD);
+
         vTaskDelay(pdMS_TO_TICKS(30));
     }
 }
@@ -189,7 +195,6 @@ static void vTaskSDMMC(void *pvArg)
         if (arq != NULL)
             break;
 
-        ESP_LOGW(TAG_SDMMC, "ERRO ao abrir o arquivo");
         vTaskDelay(1000);
         arq = fopen(file_name, "a+");
     }
@@ -199,12 +204,13 @@ static void vTaskSDMMC(void *pvArg)
 
     while (1)
     {
-        snprintf(buffer, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
-        fprintf(arq, buffer);
+        if (xSemaphoreTake(Semaphore_ADS_to_SD, 10) == pdTRUE)
+        {
+            snprintf(buffer, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
+            fprintf(arq, buffer);
+        }
 
-        // ESP_LOGI(TAG_SDMMC, "Bytes: %i", fprintf(arq, buffer));
-
-        vTaskDelay(pdMS_TO_TICKS(30));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     fclose(arq);
@@ -226,7 +232,7 @@ static esp_err_t I2C_config(void)
     return ESP_OK;
 }
 
-static esp_err_t SDMMC_config(void)
+static esp_err_t SD_config(void)
 {
     mount_sd.format_if_mount_failed = false;
     mount_sd.max_files = 5;
@@ -251,5 +257,10 @@ static esp_err_t SDMMC_config(void)
     slot_config.gpio_cs = CONFIG_COLETA_PRESSAO_CS_PIN;
     slot_config.host_id = host.slot;
 
+    return ESP_OK;
+}
+
+static esp_err_t UART_config(void)
+{
     return ESP_OK;
 }
