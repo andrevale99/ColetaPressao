@@ -46,10 +46,22 @@ static void vTaskADS1115(void *pvArg);
 TaskHandle_t handleTask_ADS115 = NULL;
 const char *TAG_ADS = "[ADS111]";
 
+/**
+ *  @brief Task para o calculo da pressao
+ *
+ *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
+ *  configuracao
+ */
 static void vTaskProcessADS(void *pvArg);
 TaskHandle_t handleTask_ProcessADS = NULL;
 const char *TAG_PROCESS_ADS = "[PROCESS_ADS]";
 
+/**
+ *  @brief Task para gravar os dados no SD
+ *
+ *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
+ *  configuracao
+ */
 static void vTaskSDMMC(void *pvArg);
 TaskHandle_t handleTask_SDMMC = NULL;
 const char *TAG_SDMMC = "[SDMMC]";
@@ -60,6 +72,10 @@ const char *TAG_SDMMC = "[SDMMC]";
 static esp_err_t I2C_config(void);
 i2c_master_bus_handle_t handle_I2Cmaster = NULL;
 
+/**
+ *  @brief Funcao de Configuracao do SPI e
+ *  manipulacao de arquivos com o SD
+ */
 static esp_err_t SDMMC_config(void);
 esp_vfs_fat_sdmmc_mount_config_t mount_sd;
 sdmmc_card_t *card;
@@ -124,7 +140,7 @@ static void vTaskProcessADS(void *pvArg)
     float c_0 = 0.0;
     float c_1 = 0.0;
 
-    int cont = 0;
+    uint8_t cont = 0;
 
     while (1)
     {
@@ -184,11 +200,11 @@ static void vTaskSDMMC(void *pvArg)
     while (1)
     {
         snprintf(buffer, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
-        printf("%s", buffer);
-        // fprintf(arq, buffer);
-        ESP_LOGW(TAG_SDMMC, "Bytes: %i", fprintf(arq, buffer));
+        fprintf(arq, buffer);
 
-        vTaskDelay(pdMS_TO_TICKS(50));
+        // ESP_LOGI(TAG_SDMMC, "Bytes: %i", fprintf(arq, buffer));
+
+        vTaskDelay(pdMS_TO_TICKS(30));
     }
 
     fclose(arq);
