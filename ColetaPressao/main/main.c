@@ -26,8 +26,8 @@
 int16_t adc0 = 0;
 int16_t adc1 = 0;
 
-float p_0 = 0.0;
-float p_1 = 0.0;
+float p_0 = 0.03;
+float p_1 = 0.01;
 
 uint64_t contador_tabela = 0;
 
@@ -74,14 +74,14 @@ void app_main(void)
     I2C_config();
     SDMMC_config();
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
-                NULL, 1, &handleTask_ADS115);
+    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
+    //             NULL, 1, &handleTask_ADS115);
 
-    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 1, &handleTask_ProcessADS);
+    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTask_ProcessADS);
 
-    // xTaskCreate(vTaskSDMMC, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTask_SDMMC);
+    xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
+                NULL, 1, &handleTask_SDMMC);
 
     // Caso precise da appmain
     // while (1)
@@ -166,7 +166,7 @@ static void vTaskSDMMC(void *pvArg)
 
     const char *file_name = MOUNT_POINT "/data.txt";
 
-    FILE *arq = fopen(file_name, "w");
+    FILE *arq = fopen(file_name, "a+");
 
     while (1)
     {
@@ -175,22 +175,23 @@ static void vTaskSDMMC(void *pvArg)
 
         ESP_LOGW(TAG_SDMMC, "ERRO ao abrir o arquivo");
         vTaskDelay(1000);
-        arq = fopen(file_name, "w");
+        arq = fopen(file_name, "a+");
     }
 
     snprintf(buffer, BUFFER_SIZE, "Contador\tP0\tP1\n");
     fprintf(arq, buffer);
 
-    fclose(arq);
-
     while (1)
     {
         snprintf(buffer, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
-        fprintf(arq, buffer);
+        printf("%s", buffer);
+        // fprintf(arq, buffer);
         ESP_LOGW(TAG_SDMMC, "Bytes: %i", fprintf(arq, buffer));
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
+
+    fclose(arq);
 }
 
 static esp_err_t I2C_config(void)
