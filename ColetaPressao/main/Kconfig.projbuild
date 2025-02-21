@@ -36,4 +36,26 @@ menu "ColetaPressao Config"
         help
             Pino SDA do protocolo I2C
 
+    config COLETA_PRESSAO_BAUD_RATE
+        int "BAUD_RATE"
+        default 115200
+        help
+            Baud Rate da comunicação serial
+
+    config COLETA_PRESSAO_TX_PIN
+        int "TX_PIN"
+        default 1
+        help
+            Pino do Transmissão do protoloco UART, Pino 1 
+            geralmente é o pino conectado a entrada USB do modulo
+            Esp32 Dev-Kit module V1.
+
+    config COLETA_PRESSAO_RX_PIN
+        int "RX_PIN"
+        default 3
+        help
+            Pino do Recepção do protoloco UART, Pino 3 
+            geralmente é o pino conectado a entrada USB do modulo
+            Esp32 Dev-Kit module V1.
+
 endmenu
