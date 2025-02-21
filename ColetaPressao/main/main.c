@@ -144,7 +144,7 @@ static void vTaskProcessADS(void *pvArg)
     float c_0 = 0.0;
     float c_1 = 0.0;
 
-    uint8_t cont = 0;
+    int cont = 0;
 
     while (1)
     {
