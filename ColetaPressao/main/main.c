@@ -90,14 +90,14 @@ void app_main(void)
     I2C_config();
     SDMMC_config();
 
-    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
-    //             NULL, 1, &handleTask_ADS115);
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
+                NULL, 1, &handleTask_ADS115);
 
-    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTask_ProcessADS);
+    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTask_ProcessADS);
 
-    xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
-                NULL, 1, &handleTask_SDMMC);
+    // xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
+    //             NULL, 1, &handleTask_SDMMC);
 
     // Caso precise da appmain
     // while (1)
@@ -140,7 +140,7 @@ static void vTaskProcessADS(void *pvArg)
     float c_0 = 0.0;
     float c_1 = 0.0;
 
-    uint8_t cont = 0;
+    int cont = 0;
 
     while (1)
     {

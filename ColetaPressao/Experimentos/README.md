@@ -8,6 +8,11 @@ Diretório que contém os dados coletados no experimentos.
 Experimento feito somente com água. A coluna P1 **NÃO DEVE
 SER CONSIDERADA**, já que não tinha sensores suficientes.
 
+### [Curva de Potência](./agua/curva_de_potencia/)
+
+Diretório que contém os testes com água variando a potência da bomba
+para verificar a curva de potência.
+
 <br>
 
 ## Observações
