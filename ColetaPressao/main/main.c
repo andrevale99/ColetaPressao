@@ -8,6 +8,7 @@
 #include <freertos/semphr.h>
 
 #include <driver/i2c_master.h>
+#include <driver/uart.h>
 
 #include <esp_vfs_fat.h>
 #include <sdmmc_cmd.h>
@@ -18,7 +19,8 @@
 
 #define MOUNT_POINT "/sdcard"
 
-#define BUFFER_SIZE 256
+#define BUFFER_SIZE 32
+#define RX_BUFFER_SIZE 1024
 
 //============================================
 //  VARS GLOBAIS
@@ -31,7 +33,8 @@ float p_1 = 0.01;
 
 uint64_t contador_tabela = 0;
 
-char buffer[BUFFER_SIZE];
+char buffer_sd[BUFFER_SIZE];
+char buffer_rx[BUFFER_SIZE];
 
 SemaphoreHandle_t Semaphore_ADS_to_SD = NULL;
 //============================================
@@ -69,6 +72,16 @@ TaskHandle_t handleTask_SDMMC = NULL;
 const char *TAG_SDMMC = "[SDMMC]";
 
 /**
+ *  @brief Task para Receber os dados via UART
+ *
+ *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
+ *  configuracao
+ */
+static void vTaskUARTRx(void *pvArg);
+TaskHandle_t handleTask_UARTRx = NULL;
+const char *TAG_UARTRX = "[UART RX]";
+
+/**
  *  @brief Funcao de Configuracao do I2C
  */
 static esp_err_t I2C_config(void);
@@ -97,6 +110,7 @@ void app_main(void)
 {
     I2C_config();
     SD_config();
+    UART_config();
 
     Semaphore_ADS_to_SD = xSemaphoreCreateBinary();
 
@@ -106,8 +120,11 @@ void app_main(void)
     // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
     //             NULL, 1, &handleTask_ProcessADS);
 
-    xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
-                NULL, 1, &handleTask_SDMMC);
+    // xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
+    //             NULL, 1, &handleTask_SDMMC);
+
+    xTaskCreate(vTaskUARTRx, "UART RX TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
+                NULL, 1, &handleTask_UARTRx);
 }
 
 //============================================
@@ -165,8 +182,8 @@ static void vTaskProcessADS(void *pvArg)
         if (cont < 101)
             cont += 1;
 
-        printf("%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
-        fflush(stdout);
+        // printf("%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
+        // fflush(stdout);
 
         contador_tabela++;
 
@@ -199,21 +216,39 @@ static void vTaskSDMMC(void *pvArg)
         arq = fopen(file_name, "a+");
     }
 
-    snprintf(buffer, BUFFER_SIZE, "Contador\tP0\tP1\n");
-    fprintf(arq, buffer);
+    snprintf(buffer_sd, BUFFER_SIZE, "Contador\tP0\tP1\n");
+    fprintf(arq, buffer_sd);
 
     while (1)
     {
         if (xSemaphoreTake(Semaphore_ADS_to_SD, 10) == pdTRUE)
         {
-            snprintf(buffer, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
-            fprintf(arq, buffer);
+            snprintf(buffer_sd, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
+            fprintf(arq, buffer_sd);
         }
 
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     fclose(arq);
+}
+
+static void vTaskUARTRx(void *pvArg)
+{
+    uint8_t length = 0;
+
+    while (1)
+    {
+        // Leitura da porta serial 0 (USB do Dev-kit module v1)
+        length = uart_read_bytes(UART_NUM_0, buffer_rx, RX_BUFFER_SIZE - 1, pdMS_TO_TICKS(10));
+
+        //  Loop back para verificar o que chegou
+        uart_write_bytes(UART_NUM_0, (const char *)buffer_rx, length);
+        if (length)
+            buffer_rx[length] = '\n';
+
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
 
 static esp_err_t I2C_config(void)
@@ -262,5 +297,27 @@ static esp_err_t SD_config(void)
 
 static esp_err_t UART_config(void)
 {
+    const uart_port_t uart_num = UART_NUM_0;
+    /* Configure parameters of an UART driver,
+     * communication pins and install the driver */
+    uart_config_t uart_config = {
+        .baud_rate = CONFIG_COLETA_PRESSAO_BAUD_RATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+    int intr_alloc_flags = 0;
+
+#if CONFIG_UART_ISR_IN_IRAM
+    intr_alloc_flags = ESP_INTR_FLAG_IRAM;
+#endif
+
+    ESP_ERROR_CHECK(uart_driver_install(uart_num, RX_BUFFER_SIZE * 2, 0, 0, NULL, intr_alloc_flags));
+    ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(uart_num, CONFIG_COLETA_PRESSAO_TX_PIN, CONFIG_COLETA_PRESSAO_RX_PIN,
+                                 UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
     return ESP_OK;
 }
