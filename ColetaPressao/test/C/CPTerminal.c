@@ -20,7 +20,11 @@
 //==========================================
 
 /// @brief Buffer das mensagens que virao pela UART 
-char buffer[MAX_LEN_BUFFER];
+struct Buffer_t
+{
+    char data[MAX_LEN_BUFFER];
+    uint8_t idx
+} buffer;
 
 //==========================================
 //  FUNCS
@@ -53,7 +57,7 @@ int main(int argc, char **argv)
 
 void cpterminal_recv(const char *cmd)
 {
-    printf("%s" , strchr(cmd, ' '));
+
 }
 
 void cpterminal_decode(void)
