@@ -53,7 +53,7 @@ int main(int argc, char **argv)
 
 void cpterminal_recv(const char *cmd)
 {
-    printf("" , strchr(cmd, ' '));
+    printf("%s" , strchr(cmd, ' '));
 }
 
 void cpterminal_decode(void)
