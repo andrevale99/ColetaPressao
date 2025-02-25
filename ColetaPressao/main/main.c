@@ -104,16 +104,15 @@ sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 
 /**
-<<<<<<< HEAD
  *  @brief Funcao de Configuracao dos GPIOS
  */
 static esp_err_t GPIO_config(void);
-=======
+
+/*
  *  @brief Funcao de Configuracao da UART
  *  para poder enviar os comandos para ESP32
  */
 static esp_err_t UART_config(void);
->>>>>>> origin/UART_terminal
 
 //============================================
 //  MAIN
@@ -121,15 +120,9 @@ static esp_err_t UART_config(void);
 void app_main(void)
 {
     I2C_config();
-<<<<<<< HEAD
-    SDMMC_config();
-    GPIO_config();
-=======
     SD_config();
     UART_config();
-
-    Semaphore_ADS_to_SD = xSemaphoreCreateBinary();
->>>>>>> origin/UART_terminal
+    GPIO_config();
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
     //             NULL, 1, &handleTask_ADS115);
@@ -137,8 +130,8 @@ void app_main(void)
     // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
     //             NULL, 1, &handleTask_ProcessADS);
 
-    // xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
-    //             NULL, 1, &handleTask_SDMMC);
+    xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
+                NULL, 1, &handleTask_SDMMC);
 
     xTaskCreate(vTaskUARTRx, "UART RX TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
                 NULL, 1, &handleTask_UARTRx);
@@ -243,20 +236,13 @@ static void vTaskSDMMC(void *pvArg)
 
     while (1)
     {
-<<<<<<< HEAD
-        snprintf(buffer, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
-        if (fprintf(arq, buffer) <= 0)
+        snprintf(buffer_sd, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n",
+                 contador_tabela, SitemaData.p0, SitemaData.p1);
+
+        if (fprintf(arq, buffer_sd) <= 0)
             gpio_set_level(LED_SD, 0);
 
         gpio_set_level(LED_SD, 1);
-=======
-        if (xSemaphoreTake(Semaphore_ADS_to_SD, 10) == pdTRUE)
-        {
-            snprintf(buffer_sd, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", 
-                    contador_tabela, SitemaData.p0, SitemaData.p1);
-            fprintf(arq, buffer_sd);
-        }
->>>>>>> origin/UART_terminal
 
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -326,7 +312,6 @@ static esp_err_t SD_config(void)
     return ESP_OK;
 }
 
-<<<<<<< HEAD
 static esp_err_t GPIO_config(void)
 {
 
@@ -340,7 +325,8 @@ static esp_err_t GPIO_config(void)
         };
 
     return gpio_config(&config);
-=======
+}
+
 static esp_err_t UART_config(void)
 {
     const uart_port_t uart_num = UART_NUM_0;
@@ -366,5 +352,4 @@ static esp_err_t UART_config(void)
                                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
     return ESP_OK;
->>>>>>> origin/UART_terminal
 }
