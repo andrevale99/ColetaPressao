@@ -20,6 +20,8 @@
 
 #define BUFFER_SIZE 256
 
+#define LED_SD GPIO_NUM_4
+
 //============================================
 //  VARS GLOBAIS
 //============================================
@@ -82,6 +84,11 @@ sdmmc_card_t *card;
 sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 
+/**
+ *  @brief Funcao de Configuracao dos GPIOS
+ */
+static esp_err_t GPIO_config(void);
+
 //============================================
 //  MAIN
 //============================================
@@ -89,15 +96,16 @@ void app_main(void)
 {
     I2C_config();
     SDMMC_config();
+    GPIO_config();
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
-                NULL, 1, &handleTask_ADS115);
+    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
+    //             NULL, 1, &handleTask_ADS115);
 
-    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 1, &handleTask_ProcessADS);
+    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTask_ProcessADS);
 
-    // xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
-    //             NULL, 1, &handleTask_SDMMC);
+    xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
+                NULL, 1, &handleTask_SDMMC);
 
     // Caso precise da appmain
     // while (1)
@@ -187,7 +195,12 @@ static void vTaskSDMMC(void *pvArg)
     while (1)
     {
         if (arq != NULL)
+        {
+            gpio_set_level(LED_SD, 1);
             break;
+        }
+
+        gpio_set_level(LED_SD, 0);
 
         ESP_LOGW(TAG_SDMMC, "ERRO ao abrir o arquivo");
         vTaskDelay(1000);
@@ -200,7 +213,10 @@ static void vTaskSDMMC(void *pvArg)
     while (1)
     {
         snprintf(buffer, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
-        fprintf(arq, buffer);
+        if (fprintf(arq, buffer) <= 0)
+            gpio_set_level(LED_SD, 0);
+
+        gpio_set_level(LED_SD, 1);
 
         // ESP_LOGI(TAG_SDMMC, "Bytes: %i", fprintf(arq, buffer));
 
@@ -252,4 +268,19 @@ static esp_err_t SDMMC_config(void)
     slot_config.host_id = host.slot;
 
     return ESP_OK;
+}
+
+static esp_err_t GPIO_config(void)
+{
+
+    gpio_config_t config =
+        {
+            .intr_type = GPIO_INTR_DISABLE,
+            .mode = GPIO_MODE_OUTPUT,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pin_bit_mask = (1 << LED_SD),
+        };
+
+    return gpio_config(&config);
 }
