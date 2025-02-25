@@ -8,6 +8,7 @@
 #include <freertos/semphr.h>
 
 #include <driver/i2c_master.h>
+#include <driver/uart.h>
 
 #include <esp_vfs_fat.h>
 #include <sdmmc_cmd.h>
@@ -18,22 +19,30 @@
 
 #define MOUNT_POINT "/sdcard"
 
-#define BUFFER_SIZE 256
+#define BUFFER_SIZE 32
+#define RX_BUFFER_SIZE 1024
 
 #define LED_SD GPIO_NUM_4
 
 //============================================
 //  VARS GLOBAIS
 //============================================
-int16_t adc0 = 0;
-int16_t adc1 = 0;
 
-float p_0 = 0.03;
-float p_1 = 0.01;
+int16_t adc0;
+int16_t adc1;
+
+struct sistema_t
+{
+    float p0;
+    float p1;
+} SitemaData;
 
 uint64_t contador_tabela = 0;
 
-char buffer[BUFFER_SIZE];
+char buffer_sd[BUFFER_SIZE];
+char buffer_rx[RX_BUFFER_SIZE];
+
+SemaphoreHandle_t Semaphore_ADS_to_SD = NULL;
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
@@ -69,6 +78,16 @@ TaskHandle_t handleTask_SDMMC = NULL;
 const char *TAG_SDMMC = "[SDMMC]";
 
 /**
+ *  @brief Task para Receber os dados via UART
+ *
+ *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
+ *  configuracao
+ */
+static void vTaskUARTRx(void *pvArg);
+TaskHandle_t handleTask_UARTRx = NULL;
+const char *TAG_UARTRX = "[UART RX]";
+
+/**
  *  @brief Funcao de Configuracao do I2C
  */
 static esp_err_t I2C_config(void);
@@ -78,16 +97,23 @@ i2c_master_bus_handle_t handle_I2Cmaster = NULL;
  *  @brief Funcao de Configuracao do SPI e
  *  manipulacao de arquivos com o SD
  */
-static esp_err_t SDMMC_config(void);
+static esp_err_t SD_config(void);
 esp_vfs_fat_sdmmc_mount_config_t mount_sd;
 sdmmc_card_t *card;
 sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 
 /**
+<<<<<<< HEAD
  *  @brief Funcao de Configuracao dos GPIOS
  */
 static esp_err_t GPIO_config(void);
+=======
+ *  @brief Funcao de Configuracao da UART
+ *  para poder enviar os comandos para ESP32
+ */
+static esp_err_t UART_config(void);
+>>>>>>> origin/UART_terminal
 
 //============================================
 //  MAIN
@@ -95,8 +121,15 @@ static esp_err_t GPIO_config(void);
 void app_main(void)
 {
     I2C_config();
+<<<<<<< HEAD
     SDMMC_config();
     GPIO_config();
+=======
+    SD_config();
+    UART_config();
+
+    Semaphore_ADS_to_SD = xSemaphoreCreateBinary();
+>>>>>>> origin/UART_terminal
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
     //             NULL, 1, &handleTask_ADS115);
@@ -104,14 +137,11 @@ void app_main(void)
     // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
     //             NULL, 1, &handleTask_ProcessADS);
 
-    xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
-                NULL, 1, &handleTask_SDMMC);
+    // xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
+    //             NULL, 1, &handleTask_SDMMC);
 
-    // Caso precise da appmain
-    // while (1)
-    // {
-    //     vTaskDelay(pdMS_TO_TICKS(1000));
-    // }
+    xTaskCreate(vTaskUARTRx, "UART RX TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
+                NULL, 1, &handleTask_UARTRx);
 }
 
 //============================================
@@ -155,24 +185,26 @@ static void vTaskProcessADS(void *pvArg)
         v_0 = (adc0 * 0.1875) / 1000;
         v_1 = (adc1 * 0.1875) / 1000;
 
-        p_0 = (((v_0 / 5) - 0.04) / 0.018) + c_0;
-        p_1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
+        SitemaData.p0 = (((v_0 / 5) - 0.04) / 0.018) + c_0;
+        SitemaData.p1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
 
         if (cont == 20)
         {
-            if (round(p_0 * 100) > 1 || round(p_0 * 100) < -1)
-                c_0 = -p_0;
-            if (round(p_1 * 100) > 1 || round(p_1 * 100) < -1)
-                c_1 = -p_1;
+            if (round(SitemaData.p0 * 100) > 1 || round(SitemaData.p0 * 100) < -1)
+                c_0 = -SitemaData.p0;
+            if (round(SitemaData.p1 * 100) > 1 || round(SitemaData.p1 * 100) < -1)
+                c_1 = -SitemaData.p1;
         }
 
         if (cont < 101)
             cont += 1;
 
-        printf("%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
-        fflush(stdout);
+        // printf("%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
+        // fflush(stdout);
 
         contador_tabela++;
+
+        xSemaphoreGive(Semaphore_ADS_to_SD);
 
         vTaskDelay(pdMS_TO_TICKS(30));
     }
@@ -202,28 +234,52 @@ static void vTaskSDMMC(void *pvArg)
 
         gpio_set_level(LED_SD, 0);
 
-        ESP_LOGW(TAG_SDMMC, "ERRO ao abrir o arquivo");
         vTaskDelay(1000);
         arq = fopen(file_name, "a+");
     }
 
-    snprintf(buffer, BUFFER_SIZE, "Contador\tP0\tP1\n");
-    fprintf(arq, buffer);
+    snprintf(buffer_sd, BUFFER_SIZE, "Contador\tP0\tP1\n");
+    fprintf(arq, buffer_sd);
 
     while (1)
     {
+<<<<<<< HEAD
         snprintf(buffer, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
         if (fprintf(arq, buffer) <= 0)
             gpio_set_level(LED_SD, 0);
 
         gpio_set_level(LED_SD, 1);
+=======
+        if (xSemaphoreTake(Semaphore_ADS_to_SD, 10) == pdTRUE)
+        {
+            snprintf(buffer_sd, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", 
+                    contador_tabela, SitemaData.p0, SitemaData.p1);
+            fprintf(arq, buffer_sd);
+        }
+>>>>>>> origin/UART_terminal
 
-        // ESP_LOGI(TAG_SDMMC, "Bytes: %i", fprintf(arq, buffer));
-
-        vTaskDelay(pdMS_TO_TICKS(30));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     fclose(arq);
+}
+
+static void vTaskUARTRx(void *pvArg)
+{
+    uint8_t length = 0;
+
+    while (1)
+    {
+        // Leitura da porta serial 0 (USB do Dev-kit module v1)
+        length = uart_read_bytes(UART_NUM_0, buffer_rx, RX_BUFFER_SIZE - 1, pdMS_TO_TICKS(10));
+
+        //  Loop back para verificar o que chegou
+        uart_write_bytes(UART_NUM_0, (const char *)buffer_rx, length);
+        if (length)
+            buffer_rx[length] = '\n';
+
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
 
 static esp_err_t I2C_config(void)
@@ -242,7 +298,7 @@ static esp_err_t I2C_config(void)
     return ESP_OK;
 }
 
-static esp_err_t SDMMC_config(void)
+static esp_err_t SD_config(void)
 {
     mount_sd.format_if_mount_failed = false;
     mount_sd.max_files = 5;
@@ -270,6 +326,7 @@ static esp_err_t SDMMC_config(void)
     return ESP_OK;
 }
 
+<<<<<<< HEAD
 static esp_err_t GPIO_config(void)
 {
 
@@ -283,4 +340,31 @@ static esp_err_t GPIO_config(void)
         };
 
     return gpio_config(&config);
+=======
+static esp_err_t UART_config(void)
+{
+    const uart_port_t uart_num = UART_NUM_0;
+    /* Configure parameters of an UART driver,
+     * communication pins and install the driver */
+    uart_config_t uart_config = {
+        .baud_rate = CONFIG_COLETA_PRESSAO_BAUD_RATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+    int intr_alloc_flags = 0;
+
+#if CONFIG_UART_ISR_IN_IRAM
+    intr_alloc_flags = ESP_INTR_FLAG_IRAM;
+#endif
+
+    ESP_ERROR_CHECK(uart_driver_install(uart_num, RX_BUFFER_SIZE * 2, 0, 0, NULL, intr_alloc_flags));
+    ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(uart_num, CONFIG_COLETA_PRESSAO_TX_PIN, CONFIG_COLETA_PRESSAO_RX_PIN,
+                                 UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
+    return ESP_OK;
+>>>>>>> origin/UART_terminal
 }
