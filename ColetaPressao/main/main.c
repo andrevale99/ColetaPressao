@@ -25,16 +25,20 @@
 //============================================
 //  VARS GLOBAIS
 //============================================
-int16_t adc0 = 0;
-int16_t adc1 = 0;
 
-float p_0 = 0.03;
-float p_1 = 0.01;
+int16_t adc0;
+int16_t adc1;
+
+struct sistema_t
+{
+    float p0;
+    float p1;
+} SitemaData;
 
 uint64_t contador_tabela = 0;
 
 char buffer_sd[BUFFER_SIZE];
-char buffer_rx[BUFFER_SIZE];
+char buffer_rx[RX_BUFFER_SIZE];
 
 SemaphoreHandle_t Semaphore_ADS_to_SD = NULL;
 //============================================
@@ -168,15 +172,15 @@ static void vTaskProcessADS(void *pvArg)
         v_0 = (adc0 * 0.1875) / 1000;
         v_1 = (adc1 * 0.1875) / 1000;
 
-        p_0 = (((v_0 / 5) - 0.04) / 0.018) + c_0;
-        p_1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
+        SitemaData.p0 = (((v_0 / 5) - 0.04) / 0.018) + c_0;
+        SitemaData.p1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
 
         if (cont == 20)
         {
-            if (round(p_0 * 100) > 1 || round(p_0 * 100) < -1)
-                c_0 = -p_0;
-            if (round(p_1 * 100) > 1 || round(p_1 * 100) < -1)
-                c_1 = -p_1;
+            if (round(SitemaData.p0 * 100) > 1 || round(SitemaData.p0 * 100) < -1)
+                c_0 = -SitemaData.p0;
+            if (round(SitemaData.p1 * 100) > 1 || round(SitemaData.p1 * 100) < -1)
+                c_1 = -SitemaData.p1;
         }
 
         if (cont < 101)
@@ -223,7 +227,8 @@ static void vTaskSDMMC(void *pvArg)
     {
         if (xSemaphoreTake(Semaphore_ADS_to_SD, 10) == pdTRUE)
         {
-            snprintf(buffer_sd, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
+            snprintf(buffer_sd, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n", 
+                    contador_tabela, SitemaData.p0, SitemaData.p1);
             fprintf(arq, buffer_sd);
         }
 
