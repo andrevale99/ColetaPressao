@@ -2,7 +2,7 @@ GCC = gcc
 CFLAGS = -Wall
 
 MAIN = CPTerminal.c
-OUT = teste_pt.out
+OUT = teste_cpt.out
 
 all: compile exec clean
 

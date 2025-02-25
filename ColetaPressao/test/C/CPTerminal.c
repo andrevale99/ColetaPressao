@@ -1,10 +1,10 @@
 /**
  * @author Andre Menezes de Freitas Vale
- * 
+ *
  * @brief Codigo que simula as mensagens que chegarar
- * pela UART do ESP32 e decodificara para realizar os 
+ * pela UART do ESP32 e decodificara para realizar os
  * comandos do sistema.
- * 
+ *
  * @note Codigo somente para nao ficar gravando o tempo
  * todo na flash do ESP32.
  */
@@ -19,34 +19,24 @@
 //  VARS
 //==========================================
 
-/// @brief Buffer das mensagens que virao pela UART 
-struct Buffer_t
-{
-    char data[MAX_LEN_BUFFER];
-    uint8_t idx
-} buffer;
+/// @brief Buffer das mensagens que virao pela UART
+char buffer[MAX_LEN_BUFFER];
 
 //==========================================
 //  FUNCS
 //==========================================
 
-/// @brief Funcao para receber os dados pela uart
-/// e gravar no buffer da biblioteca
-///
-/// @param cmd string que vira da UART 
-void cpterminal_recv(const char *cmd);
-
 /// @brief Funcao que ira decodificar a string
-void cpterminal_decode(void);
+///
+/// @param cmd string que vira da UART
+void cpterminal_decode(const char *cmd);
 
 //==========================================
 //  MAIN
 //==========================================
 int main(int argc, char **argv)
 {
-    snprintf(buffer, MAX_LEN_BUFFER, "S 50");
-
-    cpterminal_recv(buffer);
+    cpterminal_decode("SD \n");
 
     return 0;
 }
@@ -55,12 +45,30 @@ int main(int argc, char **argv)
 //  FUNCS
 //==========================================
 
-void cpterminal_recv(const char *cmd)
+void cpterminal_decode(const char *cmd)
 {
+    for (uint8_t i = 0; i < strlen(cmd); ++i)
+    {
+        if ((cmd[i] == ' ') || (cmd[i]=='\n'))
+        {
+            if (strcmp(buffer, "S") == 0)
+            {
+                //comando para ligar o motor
+            }
+            if (strcmp(buffer, "T") == 0)
+            {
+                //comando para desligar o motor
+            }
+            if (strcmp(buffer, "SD") == 0)
+            {
+                //comandos para configuracao do SS
+            }
 
-}
+            break;
+        }
 
-void cpterminal_decode(void)
-{
-    
+        buffer[i] = cmd[i];
+    }
+
+    memset(buffer, '\0', MAX_LEN_BUFFER);
 }
