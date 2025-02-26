@@ -216,13 +216,20 @@ static void vTaskSD(void *pvArg)
 {
     const char mount_point[] = MOUNT_POINT;
 
-    ESP_LOGW(TAG_SD, "SD MMC mount: %s",
-             esp_err_to_name(esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card)));
+    if (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
+    {
+        while(esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
+        {
+            ESP_LOGW(TAG_SD, "Insira ou verifique o SD");
+
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
 
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
 
-    const char *file_name = MOUNT_POINT "/data_1.txt";
+    const char *file_name = MOUNT_POINT "/data.txt";
 
     FILE *arq = fopen(file_name, "a");
 
@@ -241,7 +248,7 @@ static void vTaskSD(void *pvArg)
     fprintf(arq, buffer_sd);
 
     fclose(arq);
-    
+
     while (1)
     {
         FILE *arq = fopen(file_name, "a");
