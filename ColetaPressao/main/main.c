@@ -22,7 +22,7 @@
 #define BUFFER_SIZE 128
 #define RX_BUFFER_SIZE 1024
 
-#define LED_SD GPIO_NUM_17
+#define LED_SD GPIO_NUM_13
 
 //============================================
 //  VARS GLOBAIS
@@ -76,7 +76,7 @@ const char *TAG_PROCESS_ADS = "[PROCESS_ADS]";
  *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
  *  configuracao
  */
-static void vTaskSDMMC(void *pvArg);
+static void vTaskSD(void *pvArg);
 TaskHandle_t handleTask_SDMMC = NULL;
 const char *TAG_SDMMC = "[SDMMC]";
 
@@ -124,20 +124,20 @@ void app_main(void)
 {
     I2C_config();
     SD_config();
-    UART_config();
+    // UART_config();
     GPIO_config();
 
-    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
-    //             NULL, 1, &handleTask_ADS115);
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+                NULL, 1, &handleTask_ADS115);
 
-    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTask_ProcessADS);
+    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTask_ProcessADS);
 
-    xTaskCreate(vTaskSDMMC, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 2,
-                NULL, 1, &handleTask_SDMMC);
+    // xTaskCreate(vTaskSD, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTask_SDMMC);
 
-    xTaskCreate(vTaskUARTRx, "UART RX TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
-                NULL, 1, &handleTask_UARTRx);
+    // xTaskCreate(vTaskUARTRx, "UART RX TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
+    //             NULL, 1, &handleTask_UARTRx);
 }
 
 //============================================
@@ -182,7 +182,7 @@ static void vTaskProcessADS(void *pvArg)
         v_1 = (adc1 * 0.1875) / 1000;
 
         SistemaData.p0Total = (((v_0 / 5) - 0.04) / 0.018);
-        SistemaData.p1Total = (((v_1 / 5) - 0.04) / 0.018); 
+        SistemaData.p1Total = (((v_1 / 5) - 0.04) / 0.018);
 
         SistemaData.p0 = (((v_0 / 5) - 0.04) / 0.018) + c_0;
         SistemaData.p1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
@@ -198,18 +198,20 @@ static void vTaskProcessADS(void *pvArg)
         if (cont < 101)
             cont += 1;
 
-        // printf("%lld\t%0.2f\t%0.2f\n", contador_tabela, p_0, p_1);
-        // fflush(stdout);
+        printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
+               contador_tabela * 0.032, SistemaData.p0, SistemaData.p0Total,
+               SistemaData.p1, SistemaData.p1Total);
+        fflush(stdout);
 
         contador_tabela++;
 
-        xSemaphoreGive(Semaphore_ADS_to_SD);
+        // xSemaphoreGive(Semaphore_ADS_to_SD);
 
         vTaskDelay(pdMS_TO_TICKS(30));
     }
 }
 
-static void vTaskSDMMC(void *pvArg)
+static void vTaskSD(void *pvArg)
 {
     const char mount_point[] = MOUNT_POINT;
 
@@ -237,13 +239,14 @@ static void vTaskSDMMC(void *pvArg)
         arq = fopen(file_name, "a+");
     }
 
-    snprintf(buffer_sd, BUFFER_SIZE, "Contador\tP0\tP0+Coluna\tP1\nP1+Coluna");
+    snprintf(buffer_sd, BUFFER_SIZE,
+             "Tempo(s)\tP0(KPa)\tP0+Coluna(KPa)\tP1(KPa)\tP1+Coluna(KPa)\n");
     fprintf(arq, buffer_sd);
 
     while (1)
     {
         snprintf(buffer_sd, BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-                 contador_tabela * 0.032, SistemaData.p0, SistemaData.p1,
+                 contador_tabela * 0.032, SistemaData.p0, SistemaData.p0Total,
                  SistemaData.p1, SistemaData.p1Total);
 
         if (fprintf(arq, buffer_sd) <= 0)
@@ -265,7 +268,7 @@ static void vTaskUARTRx(void *pvArg)
     {
         // Leitura da porta serial 0 (USB do Dev-kit module v1)
         length = uart_read_bytes(UART_NUM_0, buffer_rx, RX_BUFFER_SIZE - 1, pdMS_TO_TICKS(10));
-        
+
         if (length)
             buffer_rx[length] = '\n';
         //  Loop back para verificar o que chegou
