@@ -2,6 +2,7 @@
 #include <math.h>
 #include <sys/unistd.h>
 #include <sys/stat.h>
+#include <memory.h>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -22,7 +23,7 @@
 #define BUFFER_SIZE 128
 #define RX_BUFFER_SIZE 1024
 
-#define LED_SD GPIO_NUM_13
+#define LED_SD GPIO_NUM_17
 
 //============================================
 //  VARS GLOBAIS
@@ -77,8 +78,8 @@ const char *TAG_PROCESS_ADS = "[PROCESS_ADS]";
  *  configuracao
  */
 static void vTaskSD(void *pvArg);
-TaskHandle_t handleTask_SDMMC = NULL;
-const char *TAG_SDMMC = "[SDMMC]";
+TaskHandle_t handleTask_SD = NULL;
+const char *TAG_SD = "[SD]";
 
 /**
  *  @brief Task para Receber os dados via UART
@@ -127,14 +128,14 @@ void app_main(void)
     // UART_config();
     GPIO_config();
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-                NULL, 1, &handleTask_ADS115);
+    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+    //             NULL, 1, &handleTask_ADS115);
 
-    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 1, &handleTask_ProcessADS);
+    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTask_ProcessADS);
 
-    // xTaskCreate(vTaskSD, "PROCESS SD MMC", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTask_SDMMC);
+    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTask_SD);
 
     // xTaskCreate(vTaskUARTRx, "UART RX TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
     //             NULL, 1, &handleTask_UARTRx);
@@ -215,38 +216,38 @@ static void vTaskSD(void *pvArg)
 {
     const char mount_point[] = MOUNT_POINT;
 
-    ESP_LOGW(TAG_SDMMC, "SD MMC mount: %s",
+    ESP_LOGW(TAG_SD, "SD MMC mount: %s",
              esp_err_to_name(esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card)));
 
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
 
-    const char *file_name = MOUNT_POINT "/data.txt";
+    const char *file_name = MOUNT_POINT "/data_1.txt";
 
-    FILE *arq = fopen(file_name, "a+");
+    FILE *arq = fopen(file_name, "a");
 
-    while (1)
+    while (arq == NULL)
     {
+        FILE *arq = fopen(file_name, "a");
+
         if (arq != NULL)
-        {
-            gpio_set_level(LED_SD, 1);
             break;
-        }
 
-        gpio_set_level(LED_SD, 0);
-
-        vTaskDelay(1000);
-        arq = fopen(file_name, "a+");
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 
     snprintf(buffer_sd, BUFFER_SIZE,
              "Tempo(s)\tP0(KPa)\tP0+Coluna(KPa)\tP1(KPa)\tP1+Coluna(KPa)\n");
     fprintf(arq, buffer_sd);
 
+    fclose(arq);
+    
     while (1)
     {
+        FILE *arq = fopen(file_name, "a");
+
         snprintf(buffer_sd, BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-                 contador_tabela * 0.032, SistemaData.p0, SistemaData.p0Total,
+                 contador_tabela++ * 0.032, SistemaData.p0, SistemaData.p0Total,
                  SistemaData.p1, SistemaData.p1Total);
 
         if (fprintf(arq, buffer_sd) <= 0)
@@ -254,7 +255,9 @@ static void vTaskSD(void *pvArg)
 
         gpio_set_level(LED_SD, 1);
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+        fclose(arq);
+
+        vTaskDelay(pdMS_TO_TICKS(30));
     }
 
     fclose(arq);
