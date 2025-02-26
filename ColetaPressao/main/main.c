@@ -19,10 +19,10 @@
 
 #define MOUNT_POINT "/sdcard"
 
-#define BUFFER_SIZE 32
+#define BUFFER_SIZE 128
 #define RX_BUFFER_SIZE 1024
 
-#define LED_SD GPIO_NUM_4
+#define LED_SD GPIO_NUM_17
 
 //============================================
 //  VARS GLOBAIS
@@ -34,8 +34,11 @@ int16_t adc1;
 struct sistema_t
 {
     float p0;
+    float p0Total; // Mais a coluna D'agua
+
     float p1;
-} SitemaData;
+    float p1Total; // Mais a coluna D'agua
+} SistemaData;
 
 uint64_t contador_tabela = 0;
 
@@ -178,15 +181,18 @@ static void vTaskProcessADS(void *pvArg)
         v_0 = (adc0 * 0.1875) / 1000;
         v_1 = (adc1 * 0.1875) / 1000;
 
-        SitemaData.p0 = (((v_0 / 5) - 0.04) / 0.018) + c_0;
-        SitemaData.p1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
+        SistemaData.p0Total = (((v_0 / 5) - 0.04) / 0.018);
+        SistemaData.p1Total = (((v_1 / 5) - 0.04) / 0.018); 
+
+        SistemaData.p0 = (((v_0 / 5) - 0.04) / 0.018) + c_0;
+        SistemaData.p1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
 
         if (cont == 20)
         {
-            if (round(SitemaData.p0 * 100) > 1 || round(SitemaData.p0 * 100) < -1)
-                c_0 = -SitemaData.p0;
-            if (round(SitemaData.p1 * 100) > 1 || round(SitemaData.p1 * 100) < -1)
-                c_1 = -SitemaData.p1;
+            if (round(SistemaData.p0 * 100) > 1 || round(SistemaData.p0 * 100) < -1)
+                c_0 = -SistemaData.p0;
+            if (round(SistemaData.p1 * 100) > 1 || round(SistemaData.p1 * 100) < -1)
+                c_1 = -SistemaData.p1;
         }
 
         if (cont < 101)
@@ -231,13 +237,14 @@ static void vTaskSDMMC(void *pvArg)
         arq = fopen(file_name, "a+");
     }
 
-    snprintf(buffer_sd, BUFFER_SIZE, "Contador\tP0\tP1\n");
+    snprintf(buffer_sd, BUFFER_SIZE, "Contador\tP0\tP0+Coluna\tP1\nP1+Coluna");
     fprintf(arq, buffer_sd);
 
     while (1)
     {
-        snprintf(buffer_sd, BUFFER_SIZE, "%lld\t%0.2f\t%0.2f\n",
-                 contador_tabela, SitemaData.p0, SitemaData.p1);
+        snprintf(buffer_sd, BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
+                 contador_tabela * 0.032, SistemaData.p0, SistemaData.p1,
+                 SistemaData.p1, SistemaData.p1Total);
 
         if (fprintf(arq, buffer_sd) <= 0)
             gpio_set_level(LED_SD, 0);
@@ -258,11 +265,11 @@ static void vTaskUARTRx(void *pvArg)
     {
         // Leitura da porta serial 0 (USB do Dev-kit module v1)
         length = uart_read_bytes(UART_NUM_0, buffer_rx, RX_BUFFER_SIZE - 1, pdMS_TO_TICKS(10));
-
-        //  Loop back para verificar o que chegou
-        uart_write_bytes(UART_NUM_0, (const char *)buffer_rx, length);
+        
         if (length)
             buffer_rx[length] = '\n';
+        //  Loop back para verificar o que chegou
+        uart_write_bytes(UART_NUM_0, (const char *)buffer_rx, length);
 
         vTaskDelay(pdMS_TO_TICKS(10));
     }
