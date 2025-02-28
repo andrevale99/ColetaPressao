@@ -216,14 +216,11 @@ static void vTaskSD(void *pvArg)
 {
     const char mount_point[] = MOUNT_POINT;
 
-    if (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
+    while (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
     {
-        while(esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
-        {
-            ESP_LOGW(TAG_SD, "Insira ou verifique o SD");
+        ESP_LOGW(TAG_SD, "Insira ou verifique o SD");
 
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
     // Card has been initialized, print its properties
@@ -237,10 +234,12 @@ static void vTaskSD(void *pvArg)
     {
         FILE *arq = fopen(file_name, "a");
 
+        ESP_LOGW(TAG_SD, "Nao foi possivel abrir o arquivo: %s", file_name);
+
         if (arq != NULL)
             break;
 
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
     snprintf(buffer_sd, BUFFER_SIZE,
