@@ -10,6 +10,7 @@
 
 #include <driver/i2c_master.h>
 #include <driver/uart.h>
+#include <driver/gptimer.h>
 
 #include <esp_vfs_fat.h>
 #include <sdmmc_cmd.h>
@@ -24,6 +25,8 @@
 #define RX_BUFFER_SIZE 1024
 
 #define LED_SD GPIO_NUM_17
+
+#define TIMER_RESOLUTION_HZ 1000000 / 2
 
 //============================================
 //  VARS GLOBAIS
@@ -41,7 +44,11 @@ struct sistema_t
     float p1Total; // Mais a coluna D'agua
 } SistemaData;
 
-uint64_t contador_tabela = 0;
+volatile struct timer_sample_t
+{
+    uint64_t valor_contador;
+    float tempo_decorrido;
+} TempoDeAmostragem;
 
 char buffer_sd[BUFFER_SIZE];
 char buffer_rx[RX_BUFFER_SIZE];
@@ -112,33 +119,49 @@ sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
  */
 static esp_err_t GPIO_config(void);
 
-/*
+/**
  *  @brief Funcao de Configuracao da UART
  *  para poder enviar os comandos para ESP32
  */
 static esp_err_t UART_config(void);
+
+/**
+ *  @brief Configuração do Timer para contabilizar
+ *  o tempo decorrido de um dado para o outro, para
+ *  depois ser gravado no SD.
+ */
+static esp_err_t Timer_config(void);
+gptimer_handle_t handle_Timer = NULL;
 
 //============================================
 //  MAIN
 //============================================
 void app_main(void)
 {
+    Semaphore_ADS_to_SD = xSemaphoreCreateBinary();
+
     I2C_config();
     SD_config();
     // UART_config();
     GPIO_config();
+    Timer_config();
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);
 
-    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTask_ProcessADS);
+    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTask_ProcessADS);
 
     xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTask_SD);
 
     // xTaskCreate(vTaskUARTRx, "UART RX TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
     //             NULL, 1, &handleTask_UARTRx);
+
+    // while (1)
+    // {
+    //     vTaskDelay(pdMS_TO_TICKS(1000));
+    // }
 }
 
 //============================================
@@ -199,14 +222,7 @@ static void vTaskProcessADS(void *pvArg)
         if (cont < 101)
             cont += 1;
 
-        printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-               contador_tabela * 0.032, SistemaData.p0, SistemaData.p0Total,
-               SistemaData.p1, SistemaData.p1Total);
-        fflush(stdout);
-
-        contador_tabela++;
-
-        // xSemaphoreGive(Semaphore_ADS_to_SD);
+        xSemaphoreGive(Semaphore_ADS_to_SD);
 
         vTaskDelay(pdMS_TO_TICKS(30));
     }
@@ -250,20 +266,29 @@ static void vTaskSD(void *pvArg)
 
     while (1)
     {
-        FILE *arq = fopen(file_name, "a");
+        if (xSemaphoreTake(Semaphore_ADS_to_SD, 10) == pdTRUE)
+        {
+            FILE *arq = fopen(file_name, "a");
 
-        snprintf(buffer_sd, BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-                 contador_tabela++ * 0.032, SistemaData.p0, SistemaData.p0Total,
-                 SistemaData.p1, SistemaData.p1Total);
+            gptimer_get_raw_count(handle_Timer, &(TempoDeAmostragem.valor_contador));
 
-        if (fprintf(arq, buffer_sd) <= 0)
-            gpio_set_level(LED_SD, 0);
+            TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
-        gpio_set_level(LED_SD, 1);
+            snprintf(buffer_sd, BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
+                     (TempoDeAmostragem.tempo_decorrido / 1000000), SistemaData.p0, SistemaData.p0Total,
+                     SistemaData.p1, SistemaData.p1Total);
 
-        fclose(arq);
+            gptimer_set_raw_count(handle_Timer, 0);
 
-        vTaskDelay(pdMS_TO_TICKS(30));
+            if (fprintf(arq, buffer_sd) <= 0)
+                gpio_set_level(LED_SD, 0);
+
+            gpio_set_level(LED_SD, 1);
+
+            fclose(arq);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(32));
     }
 
     fclose(arq);
@@ -369,6 +394,28 @@ static esp_err_t UART_config(void)
     ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(uart_num, CONFIG_COLETA_PRESSAO_TX_PIN, CONFIG_COLETA_PRESSAO_RX_PIN,
                                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
+    return ESP_OK;
+}
+
+static esp_err_t Timer_config(void)
+{
+    TempoDeAmostragem.tempo_decorrido = 0;
+    TempoDeAmostragem.valor_contador = 0;
+
+    gptimer_config_t config =
+        {
+            .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+            .direction = GPTIMER_COUNT_UP,
+            .resolution_hz = TIMER_RESOLUTION_HZ, // 1 kHz = 1 ms
+        };
+
+    ESP_ERROR_CHECK(gptimer_new_timer(&config, &handle_Timer));
+
+    gptimer_set_raw_count(handle_Timer, 0);
+
+    gptimer_enable(handle_Timer);
+    gptimer_start(handle_Timer);
 
     return ESP_OK;
 }
