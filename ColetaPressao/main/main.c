@@ -15,6 +15,8 @@
 #include <esp_vfs_fat.h>
 #include <sdmmc_cmd.h>
 
+#include <esp_console.h>
+
 #include <esp_check.h>
 
 #include "ads111x.h"
@@ -28,6 +30,8 @@
 
 #define TIMER_RESOLUTION_HZ 1000000 / 2
 
+#define CONSOLE_PROMPT_STR CONFIG_IDF_TARGET
+#define CONSOLE_MAX_LEN_CMD 1024
 //============================================
 //  VARS GLOBAIS
 //============================================
@@ -44,7 +48,7 @@ struct sistema_t
     float p1Total; // Mais a coluna D'agua
 } SistemaData;
 
-volatile struct timer_sample_t
+struct timer_sample_t
 {
     uint64_t valor_contador;
     float tempo_decorrido;
@@ -89,16 +93,6 @@ TaskHandle_t handleTask_SD = NULL;
 const char *TAG_SD = "[SD]";
 
 /**
- *  @brief Task para Receber os dados via UART
- *
- *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
- *  configuracao
- */
-static void vTaskUARTRx(void *pvArg);
-TaskHandle_t handleTask_UARTRx = NULL;
-const char *TAG_UARTRX = "[UART RX]";
-
-/**
  *  @brief Funcao de Configuracao do I2C
  */
 static esp_err_t I2C_config(void);
@@ -120,12 +114,6 @@ sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 static esp_err_t GPIO_config(void);
 
 /**
- *  @brief Funcao de Configuracao da UART
- *  para poder enviar os comandos para ESP32
- */
-static esp_err_t UART_config(void);
-
-/**
  *  @brief Configuração do Timer para contabilizar
  *  o tempo decorrido de um dado para o outro, para
  *  depois ser gravado no SD.
@@ -142,21 +130,32 @@ void app_main(void)
 
     I2C_config();
     SD_config();
-    // UART_config();
     GPIO_config();
     Timer_config();
+
+    esp_console_repl_t *repl = NULL;
+    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+    /* Prompt to be printed before each line.
+     * This can be customized, made dynamic, etc.
+     */
+    repl_config.prompt = CONSOLE_PROMPT_STR ">";
+    repl_config.max_cmdline_length = CONSOLE_MAX_LEN_CMD;
+
+    esp_console_register_help_command();
+
+    esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
+
+    ESP_ERROR_CHECK(esp_console_start_repl(repl));
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);
 
-    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 1, &handleTask_ProcessADS);
+    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTask_ProcessADS);
 
-    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 1, &handleTask_SD);
-
-    // xTaskCreate(vTaskUARTRx, "UART RX TASK", configMINIMAL_STACK_SIZE + 1024 * 2,
-    //             NULL, 1, &handleTask_UARTRx);
+    // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTask_SD);
 
     // while (1)
     // {
@@ -294,24 +293,6 @@ static void vTaskSD(void *pvArg)
     fclose(arq);
 }
 
-static void vTaskUARTRx(void *pvArg)
-{
-    uint8_t length = 0;
-
-    while (1)
-    {
-        // Leitura da porta serial 0 (USB do Dev-kit module v1)
-        length = uart_read_bytes(UART_NUM_0, buffer_rx, RX_BUFFER_SIZE - 1, pdMS_TO_TICKS(10));
-
-        if (length)
-            buffer_rx[length] = '\n';
-        //  Loop back para verificar o que chegou
-        uart_write_bytes(UART_NUM_0, (const char *)buffer_rx, length);
-
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-}
-
 static esp_err_t I2C_config(void)
 {
     i2c_master_bus_config_t i2c_mst_config = {
@@ -369,33 +350,6 @@ static esp_err_t GPIO_config(void)
         };
 
     return gpio_config(&config);
-}
-
-static esp_err_t UART_config(void)
-{
-    const uart_port_t uart_num = UART_NUM_0;
-    /* Configure parameters of an UART driver,
-     * communication pins and install the driver */
-    uart_config_t uart_config = {
-        .baud_rate = CONFIG_COLETA_PRESSAO_BAUD_RATE,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_DEFAULT,
-    };
-    int intr_alloc_flags = 0;
-
-#if CONFIG_UART_ISR_IN_IRAM
-    intr_alloc_flags = ESP_INTR_FLAG_IRAM;
-#endif
-
-    ESP_ERROR_CHECK(uart_driver_install(uart_num, RX_BUFFER_SIZE * 2, 0, 0, NULL, intr_alloc_flags));
-    ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
-    ESP_ERROR_CHECK(uart_set_pin(uart_num, CONFIG_COLETA_PRESSAO_TX_PIN, CONFIG_COLETA_PRESSAO_RX_PIN,
-                                 UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-
-    return ESP_OK;
 }
 
 static esp_err_t Timer_config(void)
