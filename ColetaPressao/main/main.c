@@ -10,7 +10,6 @@
 #include <freertos/event_groups.h>
 
 #include <driver/i2c_master.h>
-#include <driver/uart.h>
 #include <driver/gptimer.h>
 
 #include <esp_vfs_fat.h>
@@ -20,16 +19,13 @@
 
 #include <esp_check.h>
 
+#include "Configs.h"
 #include "ads111x.h"
 
 #define MOUNT_POINT "/sdcard"
 
 #define BUFFER_SIZE 128
 #define RX_BUFFER_SIZE 1024
-
-#define LED_SD GPIO_NUM_17
-
-#define TIMER_RESOLUTION_HZ 1000000 / 2
 
 #define CONSOLE_PROMPT_STR CONFIG_IDF_TARGET
 #define CONSOLE_MAX_LEN_CMD 1024
@@ -55,12 +51,30 @@ struct timer_sample_t
     float tempo_decorrido;
 } TempoDeAmostragem;
 
+struct SD_t
+{
+};
+
 char buffer_sd[BUFFER_SIZE];
 char buffer_rx[RX_BUFFER_SIZE];
 
+/// @brief Semaphore entre o processo dos dados do ADS111X com
+/// a gravcao do SD
 SemaphoreHandle_t Semaphore_ProcessADS_to_SD = NULL;
-EventGroupHandle_t Eventhandle_cmdBits = NULL;
-EventBits_t EventBits_cmdBits;
+
+/// @brief Handle do I2C 
+i2c_master_bus_handle_t handle_I2Cmaster = NULL;
+
+/// @brief Estruturas para iniciar e montar o protocolo
+/// SPI e o SD para a gravacao, respectivamente
+esp_vfs_fat_sdmmc_mount_config_t mount_sd;
+sdmmc_card_t *card;
+sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+
+/// @brief Handle para o Timer, usado para contabilizar
+/// o tempo entre uma gravacao e outra
+gptimer_handle_t handle_Timer = NULL;
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
@@ -95,65 +109,20 @@ static void vTaskSD(void *pvArg);
 TaskHandle_t handleTask_SD = NULL;
 const char *TAG_SD = "[SD]";
 
-/**
- *  @brief Funcao de Configuracao do I2C
- */
-static esp_err_t I2C_config(void);
-i2c_master_bus_handle_t handle_I2Cmaster = NULL;
-
-/**
- *  @brief Funcao de Configuracao do SPI e
- *  manipulacao de arquivos com o SD
- */
-static esp_err_t SD_config(void);
-esp_vfs_fat_sdmmc_mount_config_t mount_sd;
-sdmmc_card_t *card;
-sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-
-/**
- *  @brief Funcao de Configuracao dos GPIOS
- */
-static esp_err_t GPIO_config(void);
-
-/**
- *  @brief Configuração do Timer para contabilizar
- *  o tempo decorrido de um dado para o outro, para
- *  depois ser gravado no SD.
- */
-static esp_err_t Timer_config(void);
-gptimer_handle_t handle_Timer = NULL;
-
 //============================================
 //  MAIN
 //============================================
 void app_main(void)
 {
     Semaphore_ProcessADS_to_SD = xSemaphoreCreateBinary();
-    Eventhandle_cmdBits = xEventGroupCreate();
 
-    I2C_config();
-    SD_config();
+    TempoDeAmostragem.tempo_decorrido = 0;
+    TempoDeAmostragem.valor_contador = 0;
+
+    I2C_config(&handle_I2Cmaster);
+    SD_config(&mount_sd, &host, &slot_config);
     GPIO_config();
-    Timer_config();
-
-    esp_console_repl_t *repl = NULL;
-    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    /* Prompt to be printed before each line.
-     * This can be customized, made dynamic, etc.
-     */
-    repl_config.prompt = CONSOLE_PROMPT_STR ">";
-    repl_config.max_cmdline_length = CONSOLE_MAX_LEN_CMD;
-
-    esp_console_register_help_command();
-
-    esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
-    
-    cpterminal_register_cmd();
-
-    ESP_ERROR_CHECK(esp_console_start_repl(repl));
-
+    Timer_config(&handle_Timer);
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);
@@ -164,15 +133,10 @@ void app_main(void)
     // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
     //             NULL, 1, &handleTask_SD);
 
-    while (1)
-    {
-        if (EventBits_cmdBits & 0x1)
-            gpio_set_level(LED_SD, 1);
-        else if (EventBits_cmdBits & 0x2)
-            gpio_set_level(LED_SD, 0);
-
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    // while (1)
+    // {
+    //     vTaskDelay(pdMS_TO_TICKS(1000));
+    // }
 }
 
 //============================================
@@ -303,85 +267,4 @@ static void vTaskSD(void *pvArg)
     }
 
     fclose(arq);
-}
-
-static esp_err_t I2C_config(void)
-{
-    i2c_master_bus_config_t i2c_mst_config = {
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .i2c_port = I2C_NUM_0,
-        .scl_io_num = CONFIG_COLETA_PRESSAO_SCL_PIN,
-        .sda_io_num = CONFIG_COLETA_PRESSAO_SDA_PIN,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true,
-    };
-
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &handle_I2Cmaster));
-
-    return ESP_OK;
-}
-
-static esp_err_t SD_config(void)
-{
-    mount_sd.format_if_mount_failed = false;
-    mount_sd.max_files = 5;
-    mount_sd.max_files = 5;
-    mount_sd.allocation_unit_size = 16 * 1024;
-
-    spi_bus_config_t bus_cfg = {
-        .mosi_io_num = CONFIG_COLETA_PRESSAO_MOSI_PIN,
-        .miso_io_num = CONFIG_COLETA_PRESSAO_MISO_PIN,
-        .sclk_io_num = CONFIG_COLETA_PRESSAO_CLK_PIN,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .max_transfer_sz = 4000,
-    };
-
-    if (spi_bus_initialize(host.slot, &bus_cfg, SDSPI_DEFAULT_DMA) != ESP_OK)
-    {
-        ESP_LOGE("[SDMMC_config]", "Failed to initialize bus.");
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    slot_config.gpio_cs = CONFIG_COLETA_PRESSAO_CS_PIN;
-    slot_config.host_id = host.slot;
-
-    return ESP_OK;
-}
-
-static esp_err_t GPIO_config(void)
-{
-
-    gpio_config_t config =
-        {
-            .intr_type = GPIO_INTR_DISABLE,
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pin_bit_mask = (1 << LED_SD),
-        };
-
-    return gpio_config(&config);
-}
-
-static esp_err_t Timer_config(void)
-{
-    TempoDeAmostragem.tempo_decorrido = 0;
-    TempoDeAmostragem.valor_contador = 0;
-
-    gptimer_config_t config =
-        {
-            .clk_src = GPTIMER_CLK_SRC_DEFAULT,
-            .direction = GPTIMER_COUNT_UP,
-            .resolution_hz = TIMER_RESOLUTION_HZ, // 1 kHz = 1 ms
-        };
-
-    ESP_ERROR_CHECK(gptimer_new_timer(&config, &handle_Timer));
-
-    gptimer_set_raw_count(handle_Timer, 0);
-
-    gptimer_enable(handle_Timer);
-    gptimer_start(handle_Timer);
-
-    return ESP_OK;
 }
