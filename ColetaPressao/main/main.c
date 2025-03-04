@@ -21,7 +21,6 @@
 #include <esp_check.h>
 
 #include "ads111x.h"
-#include "CPTerminal.h"
 
 #define MOUNT_POINT "/sdcard"
 
