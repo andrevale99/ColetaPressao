@@ -7,6 +7,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
+#include <freertos/event_groups.h>
 
 #include <driver/i2c_master.h>
 #include <driver/uart.h>
@@ -20,6 +21,7 @@
 #include <esp_check.h>
 
 #include "ads111x.h"
+#include "CPTerminal.h"
 
 #define MOUNT_POINT "/sdcard"
 
@@ -58,6 +60,7 @@ char buffer_sd[BUFFER_SIZE];
 char buffer_rx[RX_BUFFER_SIZE];
 
 SemaphoreHandle_t Semaphore_ADS_to_SD = NULL;
+EventGroupHandle_t Eventhandle_cmd = NULL;
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
@@ -148,6 +151,8 @@ void app_main(void)
 
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
 
+    cpterminal_register_cmd();
+
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);
 
@@ -157,10 +162,10 @@ void app_main(void)
     // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
     //             NULL, 1, &handleTask_SD);
 
-    // while (1)
-    // {
-    //     vTaskDelay(pdMS_TO_TICKS(1000));
-    // }
+    while (1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
 
 //============================================
