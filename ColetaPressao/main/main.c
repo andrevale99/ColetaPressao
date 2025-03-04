@@ -59,8 +59,9 @@ struct timer_sample_t
 char buffer_sd[BUFFER_SIZE];
 char buffer_rx[RX_BUFFER_SIZE];
 
-SemaphoreHandle_t Semaphore_ADS_to_SD = NULL;
-EventGroupHandle_t Eventhandle_cmd = NULL;
+SemaphoreHandle_t Semaphore_ProcessADS_to_SD = NULL;
+EventGroupHandle_t Eventhandle_cmdBits = NULL;
+EventBits_t EventBits_cmdBits;
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
@@ -129,7 +130,8 @@ gptimer_handle_t handle_Timer = NULL;
 //============================================
 void app_main(void)
 {
-    Semaphore_ADS_to_SD = xSemaphoreCreateBinary();
+    Semaphore_ProcessADS_to_SD = xSemaphoreCreateBinary();
+    Eventhandle_cmdBits = xEventGroupCreate();
 
     I2C_config();
     SD_config();
@@ -148,10 +150,11 @@ void app_main(void)
 
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
+    
+    cpterminal_register_cmd();
 
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
 
-    cpterminal_register_cmd();
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);
@@ -164,6 +167,11 @@ void app_main(void)
 
     while (1)
     {
+        if (EventBits_cmdBits & 0x1)
+            gpio_set_level(LED_SD, 1);
+        else if (EventBits_cmdBits & 0x2)
+            gpio_set_level(LED_SD, 0);
+
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
@@ -226,7 +234,7 @@ static void vTaskProcessADS(void *pvArg)
         if (cont < 101)
             cont += 1;
 
-        xSemaphoreGive(Semaphore_ADS_to_SD);
+        xSemaphoreGive(Semaphore_ProcessADS_to_SD);
 
         vTaskDelay(pdMS_TO_TICKS(30));
     }
@@ -270,7 +278,7 @@ static void vTaskSD(void *pvArg)
 
     while (1)
     {
-        if (xSemaphoreTake(Semaphore_ADS_to_SD, 10) == pdTRUE)
+        if (xSemaphoreTake(Semaphore_ProcessADS_to_SD, 10) == pdTRUE)
         {
             FILE *arq = fopen(file_name, "a");
 
