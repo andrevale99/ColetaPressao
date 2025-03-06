@@ -247,7 +247,7 @@ static void vTaskProcessADS(void *pvArg)
 
         xSemaphoreGive(Semaphore_ProcessADS_to_SD);
 
-        vTaskDelay(pdMS_TO_TICKS(30));
+        vTaskDelay(pdMS_TO_TICKS(32));
     }
 }
 
