@@ -149,11 +149,8 @@ void app_main(void)
 
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
-    
-    cpterminal_register_cmd();
 
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
-
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);
@@ -233,6 +230,19 @@ static void vTaskProcessADS(void *pvArg)
         if (cont < 101)
             cont += 1;
 
+        gptimer_get_raw_count(handle_Timer, &(TempoDeAmostragem.valor_contador));
+
+        TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
+
+#if CONFIG_COLETA_PRESSAO_PRINTS_DATA
+        printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
+               (TempoDeAmostragem.tempo_decorrido / 1000000), SistemaData.p0, SistemaData.p0Total,
+               SistemaData.p1, SistemaData.p1Total);
+        fflush(stdout);
+#endif
+
+        gptimer_set_raw_count(handle_Timer, 0);
+
         xSemaphoreGive(Semaphore_ProcessADS_to_SD);
 
         vTaskDelay(pdMS_TO_TICKS(30));
@@ -281,15 +291,9 @@ static void vTaskSD(void *pvArg)
         {
             FILE *arq = fopen(file_name, "a");
 
-            gptimer_get_raw_count(handle_Timer, &(TempoDeAmostragem.valor_contador));
-
-            TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
-
             snprintf(buffer_sd, BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
                      (TempoDeAmostragem.tempo_decorrido / 1000000), SistemaData.p0, SistemaData.p0Total,
                      SistemaData.p1, SistemaData.p1Total);
-
-            gptimer_set_raw_count(handle_Timer, 0);
 
             if (fprintf(arq, buffer_sd) <= 0)
                 gpio_set_level(LED_SD, 0);
