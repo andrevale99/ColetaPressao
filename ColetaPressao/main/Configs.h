@@ -6,7 +6,7 @@
 
 #include <esp_check.h>
 
-#define TIMER_RESOLUTION_HZ 1000000 / 2
+#define TIMER_RESOLUTION_HZ (1000000 / 2)
 
 #define LED_SD GPIO_NUM_17
 

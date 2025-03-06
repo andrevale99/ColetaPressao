@@ -220,14 +220,14 @@ static void vTaskProcessADS(void *pvArg)
 
 #if PRINT_TERMINAL
         printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-               (TempoDeAmostragem.tempo_decorrido / 1000000), SistemaData.p0, SistemaData.p0Total,
+               (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ), SistemaData.p0, SistemaData.p0Total,
                SistemaData.p1, SistemaData.p1Total);
         fflush(stdout);
 #endif
 
         xSemaphoreGive(Semaphore_ProcessADS_to_SD);
 
-        vTaskDelay(pdMS_TO_TICKS(30));
+        vTaskDelay(pdMS_TO_TICKS(32));
     }
 }
 
