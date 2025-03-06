@@ -22,7 +22,7 @@
 
 #include "ads111x.h"
 
-#define PRINTS 1
+#define PRINTS_SERIAL 1
 
 #define MOUNT_POINT "/sdcard"
 
@@ -31,7 +31,7 @@
 
 #define LED_SD GPIO_NUM_17
 
-#define TIMER_RESOLUTION_HZ 1000000 / 2
+#define TIMER_RESOLUTION_HZ (1000000 / 2)
 
 #define CONSOLE_PROMPT_STR CONFIG_IDF_TARGET
 #define CONSOLE_MAX_LEN_CMD 1024
@@ -236,9 +236,9 @@ static void vTaskProcessADS(void *pvArg)
 
         TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
-#if PRINTS
+#if PRINTS_SERIAL
         printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-              TempoDeAmostragem.tempo_decorrido / 500000, SistemaData.p0, SistemaData.p0Total,
+              TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, SistemaData.p0, SistemaData.p0Total,
                SistemaData.p1, SistemaData.p1Total);
         fflush(stdout);
 #endif
