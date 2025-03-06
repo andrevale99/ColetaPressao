@@ -62,7 +62,7 @@ char buffer_rx[RX_BUFFER_SIZE];
 /// a gravcao do SD
 SemaphoreHandle_t Semaphore_ProcessADS_to_SD = NULL;
 
-/// @brief Handle do I2C 
+/// @brief Handle do I2C
 i2c_master_bus_handle_t handle_I2Cmaster = NULL;
 
 /// @brief Estruturas para iniciar e montar o protocolo
@@ -122,32 +122,28 @@ void app_main(void)
     I2C_config(&handle_I2Cmaster);
     SD_config(&mount_sd, &host, &slot_config);
     GPIO_config();
-<<<<<<< HEAD
     Timer_config(&handle_Timer);
-=======
-    Timer_config();
 
-    esp_console_repl_t *repl = NULL;
-    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    /* Prompt to be printed before each line.
-     * This can be customized, made dynamic, etc.
-     */
-    repl_config.prompt = CONSOLE_PROMPT_STR ">";
-    repl_config.max_cmdline_length = CONSOLE_MAX_LEN_CMD;
+    // esp_console_repl_t *repl = NULL;
+    // esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+    // /* Prompt to be printed before each line.
+    //  * This can be customized, made dynamic, etc.
+    //  */
+    // repl_config.prompt = CONSOLE_PROMPT_STR ">";
+    // repl_config.max_cmdline_length = CONSOLE_MAX_LEN_CMD;
 
-    esp_console_register_help_command();
+    // esp_console_register_help_command();
 
-    esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
+    // esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
+    // ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
 
-    ESP_ERROR_CHECK(esp_console_start_repl(repl));
->>>>>>> main
+    // ESP_ERROR_CHECK(esp_console_start_repl(repl));
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);
 
-    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTask_ProcessADS);
+    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTask_ProcessADS);
 
     // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
     //             NULL, 1, &handleTask_SD);
@@ -227,8 +223,6 @@ static void vTaskProcessADS(void *pvArg)
         fflush(stdout);
 #endif
 
-        gptimer_set_raw_count(handle_Timer, 0);
-
         xSemaphoreGive(Semaphore_ProcessADS_to_SD);
 
         vTaskDelay(pdMS_TO_TICKS(30));
@@ -249,7 +243,7 @@ static void vTaskSD(void *pvArg)
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
 
-    const char *file_name = MOUNT_POINT "/data.txt";
+    const char *file_name = MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_DATA_NAME;
 
     FILE *arq = fopen(file_name, "a");
 
@@ -285,6 +279,8 @@ static void vTaskSD(void *pvArg)
                 gpio_set_level(LED_SD, 0);
 
             gpio_set_level(LED_SD, 1);
+
+            gptimer_set_raw_count(handle_Timer, 0);
 
             fclose(arq);
         }

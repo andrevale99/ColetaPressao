@@ -65,4 +65,10 @@ menu "ColetaPressao Config"
             Grava na serial os dados adquiridos durante
             a coleta dos sensores.
 
+    config COLETA_PRESSAO_SD_DATA_NAME
+        string "Nome do arquivo"
+        default "data.txt"
+        help
+            Nome do arquivo que sera gravado no SD.
+
 endmenu
