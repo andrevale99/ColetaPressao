@@ -22,6 +22,8 @@
 
 #include "ads111x.h"
 
+#define PRINTS 1
+
 #define MOUNT_POINT "/sdcard"
 
 #define BUFFER_SIZE 128
@@ -137,26 +139,26 @@ void app_main(void)
     GPIO_config();
     Timer_config();
 
-    esp_console_repl_t *repl = NULL;
-    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    /* Prompt to be printed before each line.
-     * This can be customized, made dynamic, etc.
-     */
-    repl_config.prompt = CONSOLE_PROMPT_STR ">";
-    repl_config.max_cmdline_length = CONSOLE_MAX_LEN_CMD;
+    // esp_console_repl_t *repl = NULL;
+    // esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+    // /* Prompt to be printed before each line.
+    //  * This can be customized, made dynamic, etc.
+    //  */
+    // repl_config.prompt = CONSOLE_PROMPT_STR ">";
+    // repl_config.max_cmdline_length = CONSOLE_MAX_LEN_CMD;
 
-    esp_console_register_help_command();
+    // esp_console_register_help_command();
 
-    esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
+    // esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
+    // ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
 
-    ESP_ERROR_CHECK(esp_console_start_repl(repl));
+    // ESP_ERROR_CHECK(esp_console_start_repl(repl));
 
-    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-    //             NULL, 1, &handleTask_ADS115);
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+                NULL, 1, &handleTask_ADS115);
 
-    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTask_ProcessADS);
+    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTask_ProcessADS);
 
     // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
     //             NULL, 1, &handleTask_SD);
@@ -234,9 +236,9 @@ static void vTaskProcessADS(void *pvArg)
 
         TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
-#if CONFIG_COLETA_PRESSAO_PRINTS_DATA
+#if PRINTS
         printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-               (TempoDeAmostragem.tempo_decorrido / 1000000), SistemaData.p0, SistemaData.p0Total,
+              TempoDeAmostragem.tempo_decorrido / 500000, SistemaData.p0, SistemaData.p0Total,
                SistemaData.p1, SistemaData.p1Total);
         fflush(stdout);
 #endif
