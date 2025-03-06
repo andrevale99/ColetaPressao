@@ -122,7 +122,26 @@ void app_main(void)
     I2C_config(&handle_I2Cmaster);
     SD_config(&mount_sd, &host, &slot_config);
     GPIO_config();
+<<<<<<< HEAD
     Timer_config(&handle_Timer);
+=======
+    Timer_config();
+
+    esp_console_repl_t *repl = NULL;
+    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+    /* Prompt to be printed before each line.
+     * This can be customized, made dynamic, etc.
+     */
+    repl_config.prompt = CONSOLE_PROMPT_STR ">";
+    repl_config.max_cmdline_length = CONSOLE_MAX_LEN_CMD;
+
+    esp_console_register_help_command();
+
+    esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
+
+    ESP_ERROR_CHECK(esp_console_start_repl(repl));
+>>>>>>> main
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);
@@ -197,6 +216,19 @@ static void vTaskProcessADS(void *pvArg)
         if (cont < 101)
             cont += 1;
 
+        gptimer_get_raw_count(handle_Timer, &(TempoDeAmostragem.valor_contador));
+
+        TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
+
+#if CONFIG_COLETA_PRESSAO_PRINTS_DATA
+        printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
+               (TempoDeAmostragem.tempo_decorrido / 1000000), SistemaData.p0, SistemaData.p0Total,
+               SistemaData.p1, SistemaData.p1Total);
+        fflush(stdout);
+#endif
+
+        gptimer_set_raw_count(handle_Timer, 0);
+
         xSemaphoreGive(Semaphore_ProcessADS_to_SD);
 
         vTaskDelay(pdMS_TO_TICKS(30));
@@ -245,15 +277,9 @@ static void vTaskSD(void *pvArg)
         {
             FILE *arq = fopen(file_name, "a");
 
-            gptimer_get_raw_count(handle_Timer, &(TempoDeAmostragem.valor_contador));
-
-            TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
-
             snprintf(buffer_sd, BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
                      (TempoDeAmostragem.tempo_decorrido / 1000000), SistemaData.p0, SistemaData.p0Total,
                      SistemaData.p1, SistemaData.p1Total);
-
-            gptimer_set_raw_count(handle_Timer, 0);
 
             if (fprintf(arq, buffer_sd) <= 0)
                 gpio_set_level(LED_SD, 0);
