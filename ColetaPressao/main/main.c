@@ -22,6 +22,8 @@
 #include "Configs.h"
 #include "ads111x.h"
 
+#define PRINT_TERMINAL 1
+
 #define MOUNT_POINT "/sdcard"
 
 #define BUFFER_SIZE 128
@@ -139,8 +141,8 @@ void app_main(void)
 
     // ESP_ERROR_CHECK(esp_console_start_repl(repl));
 
-    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-    //             NULL, 1, &handleTask_ADS115);
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+                NULL, 1, &handleTask_ADS115);
 
     xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTask_ProcessADS);
@@ -216,7 +218,7 @@ static void vTaskProcessADS(void *pvArg)
 
         TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
-#if CONFIG_COLETA_PRESSAO_PRINTS_DATA
+#if PRINT_TERMINAL
         printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
                (TempoDeAmostragem.tempo_decorrido / 1000000), SistemaData.p0, SistemaData.p0Total,
                SistemaData.p1, SistemaData.p1Total);
