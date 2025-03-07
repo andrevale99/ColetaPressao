@@ -58,12 +58,12 @@ menu "ColetaPressao Config"
             geralmente é o pino conectado a entrada USB do modulo
             Esp32 Dev-Kit module V1.
 
-    config COLETA_PRESSAO_SD_DATA_NAME
-        string "Sufixo do arquivo"
+    config COLETA_PRESSAO_SD_PREFIX_FILE_NAME
+        string "PREFIXO do arquivo"
         default "data"
         help
-            Sufixo atrelado ao arquivo. Caso já tenha um arquivo com
-            o nome "SUFIXO_0.txt", o programa irá criar um arquivo 
-            "SUFIXO_1.txt".
+            PREFIXO atrelado ao arquivo. Caso já tenha um arquivo com
+            o nome "PREFIXO_0.txt", o programa irá criar um arquivo 
+            "PREFIXO_1.txt".
 
 endmenu
