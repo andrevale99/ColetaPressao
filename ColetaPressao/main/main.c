@@ -19,19 +19,20 @@
 
 #include <esp_check.h>
 
-#include "Configs.h"
 #include "ads111x.h"
+#include "Cmd.h"
+#include "Configs.h"
 
-#define MOUNT_POINT "/sdcard"
-
-#define PRINTS_SERIAL 0
-
+#define SD_MOUNT_POINT "/sdcard"
 #define SD_BUFFER_SIZE 128
 #define SD_MAX_LEN_FILE_NAME 64
 
-#define RX_BUFFER_SIZE 1024
+#define TERMINAL_PROMPT "LabFlu"
 
 #define CONSOLE_MAX_LEN_CMD 1024
+
+#define PRINTS_SERIAL 0
+
 //============================================
 //  VARS GLOBAIS
 //============================================
@@ -54,31 +55,32 @@ struct timer_sample_t
     float tempo_decorrido;
 } TempoDeAmostragem;
 
-struct SD_t
-{
-};
-
 char buffer_sd[SD_BUFFER_SIZE];
-char buffer_rx[RX_BUFFER_SIZE];
 
 /// @brief Semaphore entre o processo dos dados do ADS111X com
-/// a gravcao do SD
+/// a gravcao do SD.
 SemaphoreHandle_t Semaphore_ProcessADS_to_SD = NULL;
 
-/// @brief Handle do I2C
+/// @brief Bits de eventos para sinalizar ao sistema
+/// o comando que foi digitado no terminal.
+EventBits_t EventBits_cmd;
+EventGroupHandle_t handleEventBits_cmd = NULL;
+
+/// @brief Handle do I2C.
 i2c_master_bus_handle_t handle_I2Cmaster = NULL;
 
 /// @brief Estruturas para iniciar e montar o protocolo
-/// SPI e o SD para a gravacao, respectivamente
+/// SPI e o SD para a gravacao, respectivamente.
 esp_vfs_fat_sdmmc_mount_config_t mount_sd;
 sdmmc_card_t *card;
 sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 
 /// @brief Handle para o Timer, usado para contabilizar
-/// o tempo entre uma gravacao e outra
+/// o tempo entre uma gravacao e outra.
 gptimer_handle_t handle_Timer = NULL;
 
+/// @brief Estrutura para criar o terminal.
 esp_console_repl_t *repl = NULL;
 
 //============================================
@@ -97,6 +99,15 @@ esp_console_repl_t *repl = NULL;
  *  que ira armazenar o nome do arquivo.
  */
 void check_file_exist(FILE *_arq, char *file_name);
+
+/**
+ *  @brief Funcao de controle atrelado ao Terminal
+ *  para ligar e desligar o motor
+ *
+ * @param argc Quantidade de argumentos
+ * @param argv String dos valores
+ */
+int motor_cmd(int argc, char **argv);
 
 /**
  *  @brief Task para o ADS1115
@@ -134,6 +145,7 @@ const char *TAG_SD = "[SD]";
 void app_main(void)
 {
     Semaphore_ProcessADS_to_SD = xSemaphoreCreateBinary();
+    handleEventBits_cmd = xEventGroupCreate();
 
     TempoDeAmostragem.tempo_decorrido = 0;
     TempoDeAmostragem.valor_contador = 0;
@@ -143,25 +155,32 @@ void app_main(void)
     GPIO_config();
     Timer_config(&handle_Timer);
 
-    // esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    // esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
+    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+    esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
 
-    // repl_config.prompt = CONFIG_IDF_TARGET ">";
-    // repl_config.max_cmdline_length = CONSOLE_MAX_LEN_CMD;
+    repl_config.prompt = TERMINAL_PROMPT ">";
+    repl_config.max_cmdline_length = CONSOLE_MAX_LEN_CMD;
 
-    // esp_console_register_help_command();
+    esp_console_register_help_command();
 
-    // esp_console_new_repl_uart(&hw_config, &repl_config, &repl);
-    // esp_console_start_repl(repl);
+    vTaskDelay(pdMS_TO_TICKS(CONFIG_TASK_WDT_TIMEOUT_S));
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-                NULL, 1, &handleTask_ADS115);
+    esp_console_new_repl_uart(&hw_config, &repl_config, &repl);
+    esp_console_start_repl(repl);
 
-    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 1, &handleTask_ProcessADS);
+    cmd_register_motor(motor_cmd);
 
-    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 1, &handleTask_SD);
+    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+    //             NULL, 1, &handleTask_ADS115);
+    // vTaskSuspend(handleTask_ADS115);
+
+    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTask_ProcessADS);
+    // vTaskSuspend(handleTask_ProcessADS);
+
+    // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTask_SD);
+    // vTaskSuspend(handleTask_SD);
 
     // while (1)
     // {
@@ -178,13 +197,13 @@ void check_file_exist(FILE *_arq, char *file_name)
     for (uint8_t sufixo = 0; sufixo < UINT8_MAX; ++sufixo)
     {
         snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                 MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
+                 SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
 
         _arq = fopen(file_name, "r");
         if (_arq == NULL)
         {
             snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                     MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
+                     SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
 
             return;
         }
@@ -192,7 +211,25 @@ void check_file_exist(FILE *_arq, char *file_name)
     }
 
     snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-             MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", 0);
+             SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", 0);
+}
+
+int motor_cmd(int argc, char **argv)
+{
+    if (strcmp(argv[1], "S") == 0)
+    {
+        EventBits_cmd = xEventGroupSetBits(
+            handleEventBits_cmd, // The event group being updated.
+            CMD_MOTOR_BIT);      // The bits being set.
+    }
+    if (strcmp(argv[1], "T") == 0)
+    {
+        EventBits_cmd = xEventGroupClearBits(
+            handleEventBits_cmd, // The event group being updated.
+            CMD_MOTOR_BIT);      // The bits being cleared.
+    }
+
+    return 0;
 }
 
 static void vTaskADS1115(void *pvArg)
@@ -277,7 +314,7 @@ static void vTaskProcessADS(void *pvArg)
 static void vTaskSD(void *pvArg)
 {
     FILE *arq = NULL;
-    const char mount_point[] = MOUNT_POINT;
+    const char mount_point[] = SD_MOUNT_POINT;
     char file_name[SD_MAX_LEN_FILE_NAME];
 
     while (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
