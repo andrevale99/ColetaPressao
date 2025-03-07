@@ -22,11 +22,13 @@
 #include "Configs.h"
 #include "ads111x.h"
 
-#define PRINTS_SERIAL 0
-
 #define MOUNT_POINT "/sdcard"
 
-#define BUFFER_SIZE 128
+#define PRINTS_SERIAL 0
+
+#define SD_BUFFER_SIZE 128
+#define SD_MAX_LEN_FILE_NAME 64
+
 #define RX_BUFFER_SIZE 1024
 
 #define CONSOLE_PROMPT_STR CONFIG_IDF_TARGET
@@ -77,9 +79,25 @@ sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 /// @brief Handle para o Timer, usado para contabilizar
 /// o tempo entre uma gravacao e outra
 gptimer_handle_t handle_Timer = NULL;
+
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
+
+/**
+ *  @brief Funcao que ira criar um arquivo com o
+ *  sufixo diferente, para nao sobrescrever os arquivos
+ *  e difenrenciar qual foi o utlimo arquivo criado.
+ *
+ *  @param _arq Ponteiro para a variavel do tipo FILE
+ *  o qual ira manipular o arquivo.
+ *
+ *  @param file_name Ponteiro para uma cadeia de caracteres
+ *  que ira armazenar o nome do arquivo.
+ *
+ *  @param len Tamanho da cadeia de caracteres.
+ */
+void check_file_exist(FILE *_arq, char *file_name, uint8_t len);
 
 /**
  *  @brief Task para o ADS1115
@@ -159,6 +177,23 @@ void app_main(void)
 //============================================
 //  FUNCS
 //============================================
+
+void check_file_exist(FILE *_arq, char *file_name, uint8_t len)
+{
+    for (uint8_t sufixo = 0; sufixo < UINT8_MAX; ++sufixo)
+    {
+        snprintf(file_name, len, "data_%d.txt", sufixo);
+
+        _arq = fopen(file_name, "r");
+        if (_arq != NULL)
+        {
+            fclose(_arq);
+            sufixo++;
+            snprintf(file_name, len, "data_%d.txt", sufixo);
+        }
+    }
+}
+
 static void vTaskADS1115(void *pvArg)
 {
     ads111x_struct_t ads;
@@ -221,12 +256,11 @@ static void vTaskProcessADS(void *pvArg)
         SistemaData.p1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
 
         gptimer_get_raw_count(handle_Timer, &(TempoDeAmostragem.valor_contador));
-
         TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
 #if PRINTS_SERIAL
         printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-              TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, SistemaData.p0, SistemaData.p0Total,
+               TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, SistemaData.p0, SistemaData.p0Total,
                SistemaData.p1, SistemaData.p1Total);
         fflush(stdout);
 #endif
@@ -253,9 +287,10 @@ static void vTaskSD(void *pvArg)
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
 
-    const char *file_name = MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_DATA_NAME;
-
     FILE *arq = fopen(file_name, "a");
+
+    char file_name[SD_MAX_LEN_FILE_NAME];
+    check_file_exist(arq, file_name, SD_MAX_LEN_FILE_NAME);
 
     while (arq == NULL)
     {
@@ -269,7 +304,7 @@ static void vTaskSD(void *pvArg)
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    snprintf(buffer_sd, BUFFER_SIZE,
+    snprintf(buffer_sd, SD_BUFFER_SIZE,
              "Tempo(s)\tP0(KPa)\tP0+Coluna(KPa)\tP1(KPa)\tP1+Coluna(KPa)\n");
     fprintf(arq, buffer_sd);
 
@@ -281,8 +316,8 @@ static void vTaskSD(void *pvArg)
         {
             FILE *arq = fopen(file_name, "a");
 
-            snprintf(buffer_sd, BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-                     (TempoDeAmostragem.tempo_decorrido / 1000000), SistemaData.p0, SistemaData.p0Total,
+            snprintf(buffer_sd, SD_BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
+                     (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ), SistemaData.p0, SistemaData.p0Total,
                      SistemaData.p1, SistemaData.p1Total);
 
             if (fprintf(arq, buffer_sd) <= 0)
