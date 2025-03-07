@@ -59,9 +59,11 @@ menu "ColetaPressao Config"
             Esp32 Dev-Kit module V1.
 
     config COLETA_PRESSAO_SD_DATA_NAME
-        string "Nome do arquivo"
-        default "data.txt"
+        string "Sufixo do arquivo"
+        default "data"
         help
-            Nome do arquivo que sera gravado no SD.
+            Sufixo atrelado ao arquivo. Caso já tenha um arquivo com
+            o nome "SUFIXO_0.txt", o programa irá criar um arquivo 
+            "SUFIXO_1.txt".
 
 endmenu

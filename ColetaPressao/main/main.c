@@ -22,7 +22,7 @@
 #include "Configs.h"
 #include "ads111x.h"
 
-#define PRINT_TERMINAL 1
+#define PRINTS_SERIAL 0
 
 #define MOUNT_POINT "/sdcard"
 
@@ -147,8 +147,8 @@ void app_main(void)
     xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTask_ProcessADS);
 
-    // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTask_SD);
+    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTask_SD);
 
     // while (1)
     // {
@@ -224,9 +224,9 @@ static void vTaskProcessADS(void *pvArg)
 
         TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
-#if PRINT_TERMINAL
+#if PRINTS_SERIAL
         printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-               TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, SistemaData.p0, SistemaData.p0Total,
+              TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, SistemaData.p0, SistemaData.p0Total,
                SistemaData.p1, SistemaData.p1Total);
         fflush(stdout);
 #endif
