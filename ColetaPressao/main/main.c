@@ -101,23 +101,6 @@ esp_console_repl_t *repl = NULL;
 void check_file_exist(FILE *_arq, char *file_name);
 
 /**
- *  @brief Funcao de controle atrelado ao Terminal
- *  para ligar e desligar o motor
- *
- *  @param argc Quantidade de argumentos
- *  @param argv String dos valores
- */
-int motor_cmd(int argc, char **argv);
-
-/**
- *  @brief Funcao atrelado ao SD
- *
- *  @param argc Quantidade de argumentos
- *  @param argv String dos valores
- */
-int sd_cmd(int argc, char **argv);
-
-/**
  *  @brief Task para o ADS1115
  *
  *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
@@ -193,7 +176,7 @@ void app_main(void)
 
     // while (1)
     // {
-    //     vTaskDelay(pdMS_TO_TICKS(1000));
+    //     vTaskDelay(pdMS_TO_TICKS(100));
     // }
 }
 
@@ -221,44 +204,6 @@ void check_file_exist(FILE *_arq, char *file_name)
 
     snprintf(file_name, SD_MAX_LEN_FILE_NAME,
              SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", 0);
-}
-
-int motor_cmd(int argc, char **argv)
-{
-    if (strcmp(argv[1], "S") == 0)
-    {
-        // colocar logica para pegar o valor da potencia
-
-        EventBits_cmd = xEventGroupSetBits(
-            handleEventBits_cmd, // The event group being updated.
-            CMD_MOTOR_BIT);      // The bits being set.
-    }
-    else if (strcmp(argv[1], "T") == 0)
-    {
-        EventBits_cmd = xEventGroupClearBits(
-            handleEventBits_cmd, // The event group being updated.
-            CMD_MOTOR_BIT);      // The bits being cleared.
-    }
-
-    return 0;
-}
-
-int sd_cmd(int argc, char **argv)
-{
-    if (strcmp(argv[1], "check") == 0)
-    {
-        EventBits_cmd = xEventGroupSetBits(
-            handleEventBits_cmd, // The event group being updated.
-            CMD_SD_CHECK);      // The bits being set.
-    }
-    else if (strcmp(argv[1], "status") == 0)
-    {
-        EventBits_cmd = xEventGroupSetBits(
-            handleEventBits_cmd, // The event group being updated.
-            CMD_SD_STATUS);      // The bits being set.
-    }
-
-    return 0;
 }
 
 static void vTaskADS1115(void *pvArg)

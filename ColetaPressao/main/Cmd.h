@@ -1,6 +1,9 @@
 #ifndef CMD_H
 #define CMD_H
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/event_groups.h>
+
 #include <esp_console.h>
 
 #include <argtable3/argtable3.h>
@@ -11,12 +14,46 @@
 
 #define FUNCTION_POINTER_DEFAULT int (*func)(int argc, char **argv)
 
+extern EventBits_t EventBits_cmd;
+extern EventGroupHandle_t handleEventBits_cmd;
+
+//===============================================
+//  COMANDOS DO MOTOR
+//===============================================
+
 static struct
 {
     struct arg_str *start_stop;
     struct arg_int *potencia;
     struct arg_end *end;
 } motor_args;
+
+/**
+ *  @brief Funcao de controle atrelado ao Terminal
+ *  para ligar e desligar o motor
+ *
+ *  @param argc Quantidade de argumentos
+ *  @param argv String dos valores
+ */
+int motor_cmd(int argc, char **argv)
+{
+    if (strcmp(argv[1], "S") == 0)
+    {
+        // colocar logica para pegar o valor da potencia
+
+        EventBits_cmd = xEventGroupSetBits(
+            handleEventBits_cmd, // The event group being updated.
+            CMD_MOTOR_BIT);      // The bits being set.
+    }
+    else if (strcmp(argv[1], "T") == 0)
+    {
+        EventBits_cmd = xEventGroupClearBits(
+            handleEventBits_cmd, // The event group being updated.
+            CMD_MOTOR_BIT);      // The bits being cleared.
+    }
+
+    return 0;
+}
 
 esp_err_t cmd_register_motor(FUNCTION_POINTER_DEFAULT)
 {
@@ -35,12 +72,40 @@ esp_err_t cmd_register_motor(FUNCTION_POINTER_DEFAULT)
     return (esp_console_cmd_register(&motor_cmd));
 }
 
+//===============================================
+//  COMANDOS DO SD
+//===============================================
+
 static struct
 {
     struct arg_str *status;
     struct arg_str *check;
     struct arg_end *end;
 } sd_args;
+
+/**
+ *  @brief Funcao atrelado ao SD
+ *
+ *  @param argc Quantidade de argumentos
+ *  @param argv String dos valores
+ */
+int sd_cmd(int argc, char **argv)
+{
+    if (strcmp(argv[1], "check") == 0)
+    {
+        EventBits_cmd = xEventGroupSetBits(
+            handleEventBits_cmd, // The event group being updated.
+            CMD_SD_CHECK);       // The bits being set.
+    }
+    else if (strcmp(argv[1], "status") == 0)
+    {
+        EventBits_cmd = xEventGroupSetBits(
+            handleEventBits_cmd, // The event group being updated.
+            CMD_SD_STATUS);      // The bits being set.
+    }
+
+    return 0;
+}
 
 esp_err_t cmd_register_sd(FUNCTION_POINTER_DEFAULT)
 {
