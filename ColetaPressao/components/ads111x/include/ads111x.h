@@ -1,6 +1,10 @@
 /**
- * @brief Biblioteca baseada na ESP-IDF-ib de
- * @author UncleRus
+ * @brief Biblioteca baseada na ESP-IDF-lib de
+ * UncleRus
+ * 
+ * @note Ainda falta Criar os comandos para o sistema
+ * de comparação do ADS111X e reduzir as funcoes, pois
+ * a logica de leitura e escrita sao parecidos.
  */
 
 #ifndef ADS111X_H
