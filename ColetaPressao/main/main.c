@@ -192,6 +192,23 @@ static void vTaskProcessADS(void *pvArg)
 
     int cont = 0;
 
+    for (cont = 0; cont < 100; ++cont)
+    {
+        v_0 = (adc0 * 0.1875) / 1000;
+        v_1 = (adc1 * 0.1875) / 1000;
+
+        SistemaData.p0Total = (((v_0 / 5) - 0.04) / 0.018);
+        SistemaData.p1Total = (((v_1 / 5) - 0.04) / 0.018);
+
+        if (cont == 20)
+        {
+            if (round(SistemaData.p0 * 100) > 1 || round(SistemaData.p0 * 100) < -1)
+                c_0 = -SistemaData.p0;
+            if (round(SistemaData.p1 * 100) > 1 || round(SistemaData.p1 * 100) < -1)
+                c_1 = -SistemaData.p1;
+        }
+    }
+
     while (1)
     {
         v_0 = (adc0 * 0.1875) / 1000;
@@ -202,17 +219,6 @@ static void vTaskProcessADS(void *pvArg)
 
         SistemaData.p0 = (((v_0 / 5) - 0.04) / 0.018) + c_0;
         SistemaData.p1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
-
-        if (cont == 20)
-        {
-            if (round(SistemaData.p0 * 100) > 1 || round(SistemaData.p0 * 100) < -1)
-                c_0 = -SistemaData.p0;
-            if (round(SistemaData.p1 * 100) > 1 || round(SistemaData.p1 * 100) < -1)
-                c_1 = -SistemaData.p1;
-        }
-
-        if (cont < 101)
-            cont += 1;
 
         gptimer_get_raw_count(handle_Timer, &(TempoDeAmostragem.valor_contador));
 
