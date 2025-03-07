@@ -94,8 +94,6 @@ gptimer_handle_t handle_Timer = NULL;
  *
  *  @param file_name Ponteiro para uma cadeia de caracteres
  *  que ira armazenar o nome do arquivo.
- *
- *  @param len Tamanho da cadeia de caracteres.
  */
 void check_file_exist(FILE *_arq, char *file_name);
 
