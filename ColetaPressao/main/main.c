@@ -22,24 +22,13 @@
 #include "Configs.h"
 #include "ads111x.h"
 
-<<<<<<< HEAD
-#define PRINTS_SERIAL 1
-=======
-#define PRINT_TERMINAL 1
->>>>>>> Organização
+#define PRINTS_SERIAL 0
 
 #define MOUNT_POINT "/sdcard"
 
 #define BUFFER_SIZE 128
 #define RX_BUFFER_SIZE 1024
 
-<<<<<<< HEAD
-#define LED_SD GPIO_NUM_17
-
-#define TIMER_RESOLUTION_HZ (1000000 / 2)
-
-=======
->>>>>>> Organização
 #define CONSOLE_PROMPT_STR CONFIG_IDF_TARGET
 #define CONSOLE_MAX_LEN_CMD 1024
 //============================================
@@ -152,14 +141,14 @@ void app_main(void)
 
     // ESP_ERROR_CHECK(esp_console_start_repl(repl));
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-                NULL, 1, &handleTask_ADS115);
+    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+    //             NULL, 1, &handleTask_ADS115);
 
     xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTask_ProcessADS);
 
-    // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTask_SD);
+    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTask_SD);
 
     // while (1)
     // {
@@ -229,15 +218,9 @@ static void vTaskProcessADS(void *pvArg)
 
         TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
-<<<<<<< HEAD
 #if PRINTS_SERIAL
         printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
               TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, SistemaData.p0, SistemaData.p0Total,
-=======
-#if PRINT_TERMINAL
-        printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-               TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, SistemaData.p0, SistemaData.p0Total,
->>>>>>> Organização
                SistemaData.p1, SistemaData.p1Total);
         fflush(stdout);
 #endif
