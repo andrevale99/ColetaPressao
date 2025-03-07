@@ -58,11 +58,10 @@ menu "ColetaPressao Config"
             geralmente é o pino conectado a entrada USB do modulo
             Esp32 Dev-Kit module V1.
 
-    config COLETA_PRESSAO_PRINTS_DATA
-        bool "Prints na serial durante a amostragem dos dados"
-        default n
+    config COLETA_PRESSAO_SD_DATA_NAME
+        string "Nome do arquivo"
+        default "data.txt"
         help
-            Grava na serial os dados adquiridos durante
-            a coleta dos sensores.
+            Nome do arquivo que sera gravado no SD.
 
 endmenu
