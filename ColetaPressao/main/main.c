@@ -31,7 +31,6 @@
 
 #define RX_BUFFER_SIZE 1024
 
-#define CONSOLE_PROMPT_STR CONFIG_IDF_TARGET
 #define CONSOLE_MAX_LEN_CMD 1024
 //============================================
 //  VARS GLOBAIS
@@ -79,6 +78,8 @@ sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 /// @brief Handle para o Timer, usado para contabilizar
 /// o tempo entre uma gravacao e outra
 gptimer_handle_t handle_Timer = NULL;
+
+esp_console_repl_t *repl = NULL;
 
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
@@ -142,23 +143,19 @@ void app_main(void)
     GPIO_config();
     Timer_config(&handle_Timer);
 
-    // esp_console_repl_t *repl = NULL;
     // esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    // /* Prompt to be printed before each line.
-    //  * This can be customized, made dynamic, etc.
-    //  */
-    // repl_config.prompt = CONSOLE_PROMPT_STR ">";
+    // esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
+
+    // repl_config.prompt = CONFIG_IDF_TARGET ">";
     // repl_config.max_cmdline_length = CONSOLE_MAX_LEN_CMD;
 
     // esp_console_register_help_command();
 
-    // esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
-    // ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
+    // esp_console_new_repl_uart(&hw_config, &repl_config, &repl);
+    // esp_console_start_repl(repl);
 
-    // ESP_ERROR_CHECK(esp_console_start_repl(repl));
-
-    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-    //             NULL, 1, &handleTask_ADS115);
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+                NULL, 1, &handleTask_ADS115);
 
     xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTask_ProcessADS);
@@ -180,19 +177,22 @@ void check_file_exist(FILE *_arq, char *file_name)
 {
     for (uint8_t sufixo = 0; sufixo < UINT8_MAX; ++sufixo)
     {
-        snprintf(file_name, SD_MAX_LEN_FILE_NAME, MOUNT_POINT "/data_%d.txt", sufixo);
+        snprintf(file_name, SD_MAX_LEN_FILE_NAME,
+                 MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
 
         _arq = fopen(file_name, "r");
         if (_arq == NULL)
         {
-            snprintf(file_name, SD_MAX_LEN_FILE_NAME, MOUNT_POINT "/data_%d.txt", sufixo);
+            snprintf(file_name, SD_MAX_LEN_FILE_NAME,
+                     MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
 
             return;
         }
         fclose(_arq);
     }
 
-    snprintf(file_name, SD_MAX_LEN_FILE_NAME, MOUNT_POINT "/data_%d.txt", 0);
+    snprintf(file_name, SD_MAX_LEN_FILE_NAME,
+             MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", 0);
 }
 
 static void vTaskADS1115(void *pvArg)

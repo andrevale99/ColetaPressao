@@ -64,6 +64,8 @@ menu "ColetaPressao Config"
         help
             PREFIXO atrelado ao arquivo. Caso já tenha um arquivo com
             o nome "PREFIXO_0.txt", o programa irá criar um arquivo 
-            "PREFIXO_1.txt".
+            "PREFIXO_1.txt". Tente colocar um nome curto e sem muitos
+            caracteres "especiais" como underlines, e evitar colocar
+            caracteres com acentos.
 
 endmenu
