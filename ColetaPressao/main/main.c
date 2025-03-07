@@ -59,7 +59,7 @@ struct SD_t
 {
 };
 
-char buffer_sd[BUFFER_SIZE];
+char buffer_sd[SD_BUFFER_SIZE];
 char buffer_rx[RX_BUFFER_SIZE];
 
 /// @brief Semaphore entre o processo dos dados do ADS111X com
@@ -97,7 +97,7 @@ gptimer_handle_t handle_Timer = NULL;
  *
  *  @param len Tamanho da cadeia de caracteres.
  */
-void check_file_exist(FILE *_arq, char *file_name, uint8_t len);
+void check_file_exist(FILE *_arq, char *file_name);
 
 /**
  *  @brief Task para o ADS1115
@@ -178,20 +178,23 @@ void app_main(void)
 //  FUNCS
 //============================================
 
-void check_file_exist(FILE *_arq, char *file_name, uint8_t len)
+void check_file_exist(FILE *_arq, char *file_name)
 {
     for (uint8_t sufixo = 0; sufixo < UINT8_MAX; ++sufixo)
     {
-        snprintf(file_name, len, "data_%d.txt", sufixo);
+        snprintf(file_name, SD_MAX_LEN_FILE_NAME, MOUNT_POINT "/data_%d.txt", sufixo);
 
         _arq = fopen(file_name, "r");
-        if (_arq != NULL)
+        if (_arq == NULL)
         {
-            fclose(_arq);
-            sufixo++;
-            snprintf(file_name, len, "data_%d.txt", sufixo);
+            snprintf(file_name, SD_MAX_LEN_FILE_NAME, MOUNT_POINT "/data_%d.txt", sufixo);
+
+            return;
         }
+        fclose(_arq);
     }
+
+    snprintf(file_name, SD_MAX_LEN_FILE_NAME, MOUNT_POINT "/data_%d.txt", 0);
 }
 
 static void vTaskADS1115(void *pvArg)
@@ -275,7 +278,9 @@ static void vTaskProcessADS(void *pvArg)
 
 static void vTaskSD(void *pvArg)
 {
+    FILE *arq = NULL;
     const char mount_point[] = MOUNT_POINT;
+    char file_name[SD_MAX_LEN_FILE_NAME];
 
     while (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
     {
@@ -287,22 +292,22 @@ static void vTaskSD(void *pvArg)
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
 
-    FILE *arq = fopen(file_name, "a");
+    check_file_exist(arq, &file_name[0]);
 
-    char file_name[SD_MAX_LEN_FILE_NAME];
-    check_file_exist(arq, file_name, SD_MAX_LEN_FILE_NAME);
-
-    while (arq == NULL)
+    do
     {
-        FILE *arq = fopen(file_name, "a");
+        arq = fopen(file_name, "a");
+
+        if (arq != NULL)
+        {
+            ESP_LOGI(TAG_SD, "Arquivo %s CRIADO", file_name);
+            break;
+        }
 
         ESP_LOGW(TAG_SD, "Nao foi possivel abrir o arquivo: %s", file_name);
 
-        if (arq != NULL)
-            break;
-
         vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    } while (arq == NULL);
 
     snprintf(buffer_sd, SD_BUFFER_SIZE,
              "Tempo(s)\tP0(KPa)\tP0+Coluna(KPa)\tP1(KPa)\tP1+Coluna(KPa)\n");
