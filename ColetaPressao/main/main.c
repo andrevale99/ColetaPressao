@@ -141,8 +141,8 @@ void app_main(void)
 
     // ESP_ERROR_CHECK(esp_console_start_repl(repl));
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-                NULL, 1, &handleTask_ADS115);
+    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+    //             NULL, 1, &handleTask_ADS115);
 
     xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTask_ProcessADS);
@@ -220,10 +220,12 @@ static void vTaskProcessADS(void *pvArg)
 
 #if PRINT_TERMINAL
         printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-               (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ), SistemaData.p0, SistemaData.p0Total,
+               TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, SistemaData.p0, SistemaData.p0Total,
                SistemaData.p1, SistemaData.p1Total);
         fflush(stdout);
 #endif
+
+        gptimer_set_raw_count(handle_Timer, 0);
 
         xSemaphoreGive(Semaphore_ProcessADS_to_SD);
 
@@ -281,8 +283,6 @@ static void vTaskSD(void *pvArg)
                 gpio_set_level(LED_SD, 0);
 
             gpio_set_level(LED_SD, 1);
-
-            gptimer_set_raw_count(handle_Timer, 0);
 
             fclose(arq);
         }
