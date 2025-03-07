@@ -1,8 +1,8 @@
 GCC = gcc
 CFLAGS = -Wall
 
-MAIN = CPTerminal.c
-OUT = teste_cpt.out
+MAIN = CheckFile.c
+OUT = teste.out
 
 all: compile exec clean
 
