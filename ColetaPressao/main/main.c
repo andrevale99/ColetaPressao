@@ -104,10 +104,18 @@ void check_file_exist(FILE *_arq, char *file_name);
  *  @brief Funcao de controle atrelado ao Terminal
  *  para ligar e desligar o motor
  *
- * @param argc Quantidade de argumentos
- * @param argv String dos valores
+ *  @param argc Quantidade de argumentos
+ *  @param argv String dos valores
  */
 int motor_cmd(int argc, char **argv);
+
+/**
+ *  @brief Funcao atrelado ao SD
+ *
+ *  @param argc Quantidade de argumentos
+ *  @param argv String dos valores
+ */
+int sd_cmd(int argc, char **argv);
 
 /**
  *  @brief Task para o ADS1115
@@ -163,12 +171,13 @@ void app_main(void)
 
     esp_console_register_help_command();
 
-    vTaskDelay(pdMS_TO_TICKS(CONFIG_TASK_WDT_TIMEOUT_S));
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     esp_console_new_repl_uart(&hw_config, &repl_config, &repl);
     esp_console_start_repl(repl);
 
     cmd_register_motor(motor_cmd);
+    cmd_register_sd(sd_cmd);
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);
@@ -218,15 +227,35 @@ int motor_cmd(int argc, char **argv)
 {
     if (strcmp(argv[1], "S") == 0)
     {
+        // colocar logica para pegar o valor da potencia
+
         EventBits_cmd = xEventGroupSetBits(
             handleEventBits_cmd, // The event group being updated.
             CMD_MOTOR_BIT);      // The bits being set.
     }
-    if (strcmp(argv[1], "T") == 0)
+    else if (strcmp(argv[1], "T") == 0)
     {
         EventBits_cmd = xEventGroupClearBits(
             handleEventBits_cmd, // The event group being updated.
             CMD_MOTOR_BIT);      // The bits being cleared.
+    }
+
+    return 0;
+}
+
+int sd_cmd(int argc, char **argv)
+{
+    if (strcmp(argv[1], "check") == 0)
+    {
+        EventBits_cmd = xEventGroupSetBits(
+            handleEventBits_cmd, // The event group being updated.
+            CMD_SD_CHECK);      // The bits being set.
+    }
+    else if (strcmp(argv[1], "status") == 0)
+    {
+        EventBits_cmd = xEventGroupSetBits(
+            handleEventBits_cmd, // The event group being updated.
+            CMD_SD_STATUS);      // The bits being set.
     }
 
     return 0;
