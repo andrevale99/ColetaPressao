@@ -13,9 +13,6 @@
 #define CMD_SD_CHECK (1 << 1)
 #define CMD_SD_STATUS (1 << 2)
 
-void sd_link_eventgroup(EventBits_t *_EventBits_cmd_from_main,
-                        EventGroupHandle_t *_handleEventBits_cmd_from_main);
-
 /**
  *  @brief Funcao atrelado ao SD
  *
@@ -24,6 +21,8 @@ void sd_link_eventgroup(EventBits_t *_EventBits_cmd_from_main,
  */
 int sd_cmd(int argc, char **argv);
 
-esp_err_t cmd_register_sd(int (*func)(int argc, char **argv));
+esp_err_t cmd_register_sd(int (*func)(int argc, char **argv),
+                          EventBits_t *_EventBits_cmd_from_main,
+                          EventGroupHandle_t *_handleEventBits_cmd_from_main);
 
 #endif

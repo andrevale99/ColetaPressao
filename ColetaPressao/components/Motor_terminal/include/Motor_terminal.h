@@ -12,9 +12,6 @@
 
 #define CMD_MOTOR_BIT (1 << 0)
 
-void motor_link_eventgroup(EventBits_t *_EventBits_cmd_from_main,
-                           EventGroupHandle_t *_handleEventBits_cmd_from_main);
-
 /**
  *  @brief Funcao de controle atrelado ao Terminal
  *  para ligar e desligar o motor
@@ -24,6 +21,8 @@ void motor_link_eventgroup(EventBits_t *_EventBits_cmd_from_main,
  */
 int motor_cmd(int argc, char **argv);
 
-esp_err_t cmd_register_motor(int (*func)(int argc, char **argv));
+esp_err_t cmd_register_motor(int (*func)(int argc, char **argv),
+                             EventBits_t *_EventBits_cmd_from_main,
+                             EventGroupHandle_t *_handleEventBits_cmd_from_main);
 
 #endif
