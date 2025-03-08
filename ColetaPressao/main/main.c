@@ -20,16 +20,17 @@
 #include <esp_check.h>
 
 #include "ads111x.h"
-#include "Cmd.h"
 #include "Configs.h"
-
-#define SD_MOUNT_POINT "/sdcard"
-#define SD_BUFFER_SIZE 128
-#define SD_MAX_LEN_FILE_NAME 64
+#include "SD_terminal.h"
+#include "Motor_terminal.h"
 
 #define TERMINAL_PROMPT "LabFlu"
 
 #define CONSOLE_MAX_LEN_CMD 1024
+
+#define SD_MOUNT_POINT "/sdcard"
+#define SD_BUFFER_SIZE 128
+#define SD_MAX_LEN_FILE_NAME 64
 
 #define PRINTS_SERIAL 0
 
@@ -158,6 +159,9 @@ void app_main(void)
 
     esp_console_new_repl_uart(&hw_config, &repl_config, &repl);
     esp_console_start_repl(repl);
+
+    motor_link_eventgroup(&EventBits_cmd, &handleEventBits_cmd);
+    sd_link_eventgroup(&EventBits_cmd, &handleEventBits_cmd);
 
     cmd_register_motor(motor_cmd);
     cmd_register_sd(sd_cmd);
