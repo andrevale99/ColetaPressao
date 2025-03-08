@@ -10,7 +10,7 @@ static struct
     struct arg_end *end;
 } motor_args;
 
-int motor_cmd(int argc, char **argv)
+static int motor_terminal(int argc, char **argv)
 {
     if (strcmp(argv[1], "S") == 0)
     {
@@ -30,8 +30,7 @@ int motor_cmd(int argc, char **argv)
     return 0;
 }
 
-esp_err_t cmd_register_motor(int (*func)(int argc, char **argv),
-                             EventBits_t *_EventBits_cmd_from_main,
+esp_err_t cmd_register_motor(EventBits_t *_EventBits_cmd_from_main,
                              EventGroupHandle_t *_handleEventBits_cmd_from_main)
 {
     EventBits_cmd_motor = _EventBits_cmd_from_main;
@@ -45,7 +44,7 @@ esp_err_t cmd_register_motor(int (*func)(int argc, char **argv),
         .command = "motor",
         .help = "Ligar ou Desliga o motor com uma certa Potencia",
         .hint = NULL,
-        .func = func,
+        .func = motor_terminal,
         .argtable = &motor_args,
     };
 

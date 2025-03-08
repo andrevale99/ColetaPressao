@@ -19,10 +19,9 @@
  *  @param argc Quantidade de argumentos
  *  @param argv String dos valores
  */
-int motor_cmd(int argc, char **argv);
+static int motor_cmd(int argc, char **argv);
 
-esp_err_t cmd_register_motor(int (*func)(int argc, char **argv),
-                             EventBits_t *_EventBits_cmd_from_main,
+esp_err_t cmd_register_motor(EventBits_t *_EventBits_cmd_from_main,
                              EventGroupHandle_t *_handleEventBits_cmd_from_main);
 
 #endif

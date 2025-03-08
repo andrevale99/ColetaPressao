@@ -19,10 +19,17 @@
  *  @param argc Quantidade de argumentos
  *  @param argv String dos valores
  */
-int sd_cmd(int argc, char **argv);
+static int sd_terminal(int argc, char **argv);
 
-esp_err_t cmd_register_sd(int (*func)(int argc, char **argv),
-                          EventBits_t *_EventBits_cmd_from_main,
+/**
+ * @brief Funcao para registrar de SD no terminal
+ *
+ * @param _EventBits_cmd_from_main A variavel de Bits de evento que sera
+ * vinculado
+ * 
+ * @param _handleEventBits_cmd_from_main Handle dogrupo de eventos
+ */
+esp_err_t cmd_register_sd(EventBits_t *_EventBits_cmd_from_main,
                           EventGroupHandle_t *_handleEventBits_cmd_from_main);
 
 #endif

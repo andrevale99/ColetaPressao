@@ -160,8 +160,8 @@ void app_main(void)
     esp_console_new_repl_uart(&hw_config, &repl_config, &repl);
     esp_console_start_repl(repl);
 
-    cmd_register_motor(motor_cmd, &EventBits_cmd, &handleEventBits_cmd);
-    cmd_register_sd(sd_cmd,&EventBits_cmd, &handleEventBits_cmd);
+    cmd_register_motor(&EventBits_cmd, &handleEventBits_cmd);
+    cmd_register_sd(&EventBits_cmd, &handleEventBits_cmd);
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);

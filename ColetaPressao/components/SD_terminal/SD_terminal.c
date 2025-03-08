@@ -10,7 +10,7 @@ static struct
     struct arg_end *end;
 } sd_args;
 
-int sd_cmd(int argc, char **argv)
+static int sd_terminal(int argc, char **argv)
 {
     if (strcmp(argv[1], "check") == 0)
     {
@@ -28,8 +28,7 @@ int sd_cmd(int argc, char **argv)
     return 0;
 }
 
-esp_err_t cmd_register_sd(int (*func)(int argc, char **argv),
-                          EventBits_t *_EventBits_cmd_from_main,
+esp_err_t cmd_register_sd(EventBits_t *_EventBits_cmd_from_main,
                           EventGroupHandle_t *_handleEventBits_cmd_from_main)
 {
     EventBits_cmd_sd = _EventBits_cmd_from_main;
@@ -43,7 +42,7 @@ esp_err_t cmd_register_sd(int (*func)(int argc, char **argv),
         .command = "sd",
         .help = "Comandos para verificacao do SD e arquivos",
         .hint = NULL,
-        .func = func,
+        .func = sd_terminal,
         .argtable = &sd_args,
     };
 
