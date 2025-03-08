@@ -12,11 +12,10 @@
 #include <driver/i2c_master.h>
 #include <driver/gptimer.h>
 
-#include <esp_vfs_fat.h>
 #include <sdmmc_cmd.h>
 
+#include <esp_vfs_fat.h>
 #include <esp_console.h>
-
 #include <esp_check.h>
 
 #include "ads111x.h"
@@ -28,15 +27,13 @@
 
 #define CONSOLE_MAX_LEN_CMD 1024
 
-#define SD_MOUNT_POINT "/sdcard"
-#define SD_BUFFER_SIZE 128
-#define SD_MAX_LEN_FILE_NAME 64
-
 #define PRINTS_SERIAL 0
 
 //============================================
 //  VARS GLOBAIS
 //============================================
+
+struct dirent *dirs = NULL;
 
 int16_t adc0;
 int16_t adc1;
@@ -161,7 +158,7 @@ void app_main(void)
     esp_console_start_repl(repl);
 
     cmd_register_motor(&EventBits_cmd, &handleEventBits_cmd);
-    cmd_register_sd(&EventBits_cmd, &handleEventBits_cmd);
+    cmd_register_sd();
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);

@@ -2,6 +2,7 @@
 #define SD_TERMINAL_H
 
 #include <string.h>
+#include <dirent.h>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
@@ -10,8 +11,12 @@
 
 #include <argtable3/argtable3.h>
 
-#define CMD_SD_CHECK (1 << 1)
-#define CMD_SD_STATUS (1 << 2)
+#define SD_MOUNT_POINT "/sdcard"
+#define SD_BUFFER_SIZE 128
+#define SD_MAX_LEN_FILE_NAME 128
+
+#define SD_MASK_DETECTED (1 << 0)
+#define SD_MASK_ON_WRITE (1 << 1)
 
 /**
  *  @brief Funcao atrelado ao SD
@@ -26,10 +31,23 @@ static int sd_terminal(int argc, char **argv);
  *
  * @param _EventBits_cmd_from_main A variavel de Bits de evento que sera
  * vinculado
- * 
+ *
  * @param _handleEventBits_cmd_from_main Handle dogrupo de eventos
  */
-esp_err_t cmd_register_sd(EventBits_t *_EventBits_cmd_from_main,
-                          EventGroupHandle_t *_handleEventBits_cmd_from_main);
+esp_err_t cmd_register_sd(void);
+
+/**
+ * @brief Funcao para setar o bit de uma maskara
+ * para verificacao da situacao do SD durante a 
+ * consulta do console
+ * 
+ * @param flag se é true ou false
+ * 
+ * @note Exemplo: Se foi detectado o SD, colocar a flag
+ * como "true" e colocar qual bit é. Para saber qual bit
+ * colocar basta consultar os defines da biblioteca
+ * todos os defines comecam com "SD_MASK...".
+ */
+void sd_set_bitmask(bool flag, uint8_t bit);
 
 #endif

@@ -21,6 +21,14 @@
  */
 static int motor_cmd(int argc, char **argv);
 
+/**
+ * @brief Funcao para registrar do Motor no terminal
+ *
+ * @param _EventBits_cmd_from_main A variavel de Bits de evento que sera
+ * vinculado
+ * 
+ * @param _handleEventBits_cmd_from_main Handle dogrupo de eventos
+ */
 esp_err_t cmd_register_motor(EventBits_t *_EventBits_cmd_from_main,
                              EventGroupHandle_t *_handleEventBits_cmd_from_main);
 
