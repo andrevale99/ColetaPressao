@@ -35,16 +35,17 @@
 
 struct dirent *dirs = NULL;
 
-int16_t adc0;
-int16_t adc1;
-
 struct sistema_t
 {
+    int16_t adc0;
     float p0;
     float p0Total; // Mais a coluna D'agua
+    float offset0;
 
+    int16_t adc1;
     float p1;
     float p1Total; // Mais a coluna D'agua
+    float offset1;
 } SistemaData;
 
 struct timer_sample_t
@@ -99,6 +100,24 @@ esp_console_repl_t *repl = NULL;
 void check_file_exist(FILE *_arq, char *file_name);
 
 /**
+ * @brief Calcula o offset para estabilizar a pressao 
+ * considerando a pressao diferencial, ou seja, ao ligar
+ * o sistema o sistema ira considerar a pressao o qual o sensor
+ * está captando como um novo ZERO
+ * 
+ * @param sistema Ponteiro para a estrutura de dados do sistema
+ * @param ads Estrutura do sensor
+ */
+void set_offset_pressure(struct sistema_t *sistema, ads111x_struct_t *ads);
+
+/**
+ * @brief Calcula o valor da pressao
+ * 
+ * @param sistema Ponteiro para a estrutura de dados do sistema
+ */
+void process_pressures(struct sistema_t *sistema);
+
+/**
  *  @brief Task para o ADS1115
  *
  *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
@@ -107,16 +126,6 @@ void check_file_exist(FILE *_arq, char *file_name);
 static void vTaskADS1115(void *pvArg);
 TaskHandle_t handleTaskADS115 = NULL;
 const char *TAG_ADS = "[ADS111]";
-
-/**
- *  @brief Task para o calculo da pressao
- *
- *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
- *  configuracao
- */
-static void vTaskProcessADS(void *pvArg);
-TaskHandle_t handleTaskProcessADS = NULL;
-const char *TAG_PROCESS_ADS = "[PROCESS_ADS]";
 
 /**
  *  @brief Task para gravar os dados no SD
@@ -163,9 +172,6 @@ void app_main(void)
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);
 
-    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTaskProcessADS);
-
     // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
     //             NULL, 1, &handleTaskSD);
 
@@ -201,6 +207,61 @@ void check_file_exist(FILE *_arq, char *file_name)
              SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", 0);
 }
 
+void set_offset_pressure(struct sistema_t *sistema, ads111x_struct_t *ads)
+{
+    float v_0 = 0.0;
+    float v_1 = 0.0;
+
+    sistema->offset0 = 0.0;
+    sistema->offset1 = 0.0;
+
+    int cont = 0;
+
+    for (cont = 0; cont < 100; ++cont)
+    {
+        ads111x_set_input_mux(ADS111X_MUX_0_GND, ads);
+        ads111x_get_conversion_sigle_ended(ads);
+        sistema->adc0 = ads->conversion;
+
+        ads111x_set_input_mux(ADS111X_MUX_1_GND, ads);
+        ads111x_get_conversion_sigle_ended(ads);
+        sistema->adc1 = ads->conversion;
+
+        v_0 = (sistema->adc0 * 0.1875) / 1000;
+        v_1 = (sistema->adc1 * 0.1875) / 1000;
+
+        sistema->p0Total = (((v_0 / 5) - 0.04) / 0.018);
+        sistema->p1Total = (((v_1 / 5) - 0.04) / 0.018);
+
+        if (cont == 20)
+        {
+            if (round(sistema->p0 * 100) > 1 || round(sistema->p0 * 100) < -1)
+                sistema->offset0 = -sistema->p0;
+            if (round(sistema->p1 * 100) > 1 || round(sistema->p1 * 100) < -1)
+                sistema->offset1 = -sistema->p1;
+        }
+    }
+}
+
+void process_pressures(struct sistema_t *sistema)
+{
+    float v_0 = (sistema->adc0 * 0.1875) / 1000;
+    float v_1 = (sistema->adc1 * 0.1875) / 1000;
+
+    sistema->p0Total = (((v_0 / 5) - 0.04) / 0.018);
+    sistema->p1Total = (((v_1 / 5) - 0.04) / 0.018);
+
+    sistema->p0 = (((v_0 / 5) - 0.04) / 0.018) + sistema->offset0;
+    sistema->p1 = (((v_1 / 5) - 0.04) / 0.018) + sistema->offset1;
+
+#if PRINTS_SERIAL
+    printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
+           TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, sistema->p0, sistema->p0Total,
+           sistema->p1, sistema->p1Total);
+    fflush(stdout);
+#endif
+}
+
 static void vTaskADS1115(void *pvArg)
 {
     ads111x_struct_t ads;
@@ -210,67 +271,22 @@ static void vTaskADS1115(void *pvArg)
     ads111x_set_mode(ADS111X_MODE_SINGLE_SHOT, &ads);
     ads111x_set_data_rate(ADS111X_DATA_RATE_32, &ads);
 
+    set_offset_pressure(&SistemaData, &ads);
+
     while (1)
     {
         ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
         ads111x_get_conversion_sigle_ended(&ads);
-        adc0 = ads.conversion;
+        SistemaData.adc0 = ads.conversion;
 
         ads111x_set_input_mux(ADS111X_MUX_1_GND, &ads);
         ads111x_get_conversion_sigle_ended(&ads);
-        adc1 = ads.conversion;
-
-        vTaskDelay(pdMS_TO_TICKS(32));
-    }
-}
-
-static void vTaskProcessADS(void *pvArg)
-{
-    float v_0 = 0.0;
-    float v_1 = 0.0;
-
-    float c_0 = 0.0;
-    float c_1 = 0.0;
-
-    int cont = 0;
-
-    for (cont = 0; cont < 100; ++cont)
-    {
-        v_0 = (adc0 * 0.1875) / 1000;
-        v_1 = (adc1 * 0.1875) / 1000;
-
-        SistemaData.p0Total = (((v_0 / 5) - 0.04) / 0.018);
-        SistemaData.p1Total = (((v_1 / 5) - 0.04) / 0.018);
-
-        if (cont == 20)
-        {
-            if (round(SistemaData.p0 * 100) > 1 || round(SistemaData.p0 * 100) < -1)
-                c_0 = -SistemaData.p0;
-            if (round(SistemaData.p1 * 100) > 1 || round(SistemaData.p1 * 100) < -1)
-                c_1 = -SistemaData.p1;
-        }
-    }
-
-    while (1)
-    {
-        v_0 = (adc0 * 0.1875) / 1000;
-        v_1 = (adc1 * 0.1875) / 1000;
-
-        SistemaData.p0Total = (((v_0 / 5) - 0.04) / 0.018);
-        SistemaData.p1Total = (((v_1 / 5) - 0.04) / 0.018);
-
-        SistemaData.p0 = (((v_0 / 5) - 0.04) / 0.018) + c_0;
-        SistemaData.p1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
+        SistemaData.adc1 = ads.conversion;
 
         gptimer_get_raw_count(handleTimer, &(TempoDeAmostragem.valor_contador));
         TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
-#if PRINTS_SERIAL
-        printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-               TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, SistemaData.p0, SistemaData.p0Total,
-               SistemaData.p1, SistemaData.p1Total);
-        fflush(stdout);
-#endif
+        process_pressures(&SistemaData);
 
         gptimer_set_raw_count(handleTimer, 0);
 
