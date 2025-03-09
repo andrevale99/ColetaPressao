@@ -15,19 +15,19 @@ static int sd_terminal(int argc, char **argv)
     if (strcmp(argv[1], "status") == 0)
     {
         if (MaskBit & SD_MASK_DETECTED)
-            printf("-> %s SD Detectado %s\n", BHGRN, COLOR_RESET);
+            printf("%s -> SD Detectado %s\n", BHGRN, COLOR_RESET);
         else
-            printf("-> %s SEM SD, verificar SD %s\n", BHRED, COLOR_RESET);
+            printf("%s -> SEM SD, verificar SD %s\n", BHRED, COLOR_RESET);
 
         if (MaskBit & SD_MASK_ON_WRITE)
-            printf("-> %s SD sendo escrito %s\n", BHGRN, COLOR_RESET);
+            printf("%s ->  SD sendo escrito %s\n", BHGRN, COLOR_RESET);
         else
-            printf("-> %s ERRO na escrita verificar SD%s\n", BHRED, COLOR_RESET);
+            printf("%s ->  ERRO na escrita verificar SD%s\n", BHRED, COLOR_RESET);
 
         if (MaskBit & SD_MASK_FILE_CREATED)
-            printf("-> %s Arquivo Criado: %s %s\n", BHGRN, file_name, COLOR_RESET);
+            printf("%s -> Arquivo Criado: %s %s\n", BHGRN, file_name, COLOR_RESET);
         else
-            printf("-> %s ERRO ao criar o arquivo %s\n", BHRED, COLOR_RESET);
+            printf("%s -> ERRO ao criar o arquivo %s\n", BHRED, COLOR_RESET);
 
         printf("\n");
         fflush(stdout);
