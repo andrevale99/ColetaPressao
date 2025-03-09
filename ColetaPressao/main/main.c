@@ -337,7 +337,7 @@ static void vTaskSD(void *pvArg)
             fclose(arq);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(32));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     fclose(arq);
