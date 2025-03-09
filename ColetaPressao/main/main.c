@@ -18,6 +18,7 @@
 #include <esp_console.h>
 #include <esp_check.h>
 
+#include "Macros.h"
 #include "ads111x.h"
 #include "Configs.h"
 #include "SD_terminal.h"
@@ -323,7 +324,7 @@ static void vTaskSD(void *pvArg)
     {
         if (xSemaphoreTake(Semaphore_ProcessADS_to_SD, 10) == pdTRUE)
         {
-            FILE *arq = fopen(file_name, "a");
+            arq = fopen(file_name, "a");
 
             snprintf(buffer_sd, SD_BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
                      (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ), SistemaData.p0, SistemaData.p0Total,

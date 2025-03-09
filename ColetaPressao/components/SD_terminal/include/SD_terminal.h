@@ -11,6 +11,14 @@
 
 #include <argtable3/argtable3.h>
 
+#define BRED "\e[1;31m"
+#define BGRN "\e[1;32m"
+#define HRED "\e[0;91m"
+#define HGRN "\e[0;92m"
+#define BHRED "\e[1;91m"
+#define BHGRN "\e[1;92m"
+#define COLOR_RESET "\e[0m"
+
 #define SD_MOUNT_POINT "/sdcard"
 #define SD_BUFFER_SIZE 128
 #define SD_MAX_LEN_FILE_NAME 128
