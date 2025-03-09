@@ -65,7 +65,7 @@ EventBits_t EventBits_cmd;
 EventGroupHandle_t handleEventBits_cmd = NULL;
 
 /// @brief Handle do I2C.
-i2c_master_bus_handle_t handle_I2Cmaster = NULL;
+i2c_master_bus_handle_t handleI2Cmaster = NULL;
 
 /// @brief Estruturas para iniciar e montar o protocolo
 /// SPI e o SD para a gravacao, respectivamente.
@@ -76,7 +76,7 @@ sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 
 /// @brief Handle para o Timer, usado para contabilizar
 /// o tempo entre uma gravacao e outra.
-gptimer_handle_t handle_Timer = NULL;
+gptimer_handle_t handleTimer = NULL;
 
 /// @brief Estrutura para criar o terminal.
 esp_console_repl_t *repl = NULL;
@@ -105,7 +105,7 @@ void check_file_exist(FILE *_arq, char *file_name);
  *  configuracao
  */
 static void vTaskADS1115(void *pvArg);
-TaskHandle_t handleTask_ADS115 = NULL;
+TaskHandle_t handleTaskADS115 = NULL;
 const char *TAG_ADS = "[ADS111]";
 
 /**
@@ -115,7 +115,7 @@ const char *TAG_ADS = "[ADS111]";
  *  configuracao
  */
 static void vTaskProcessADS(void *pvArg);
-TaskHandle_t handleTask_ProcessADS = NULL;
+TaskHandle_t handleTaskProcessADS = NULL;
 const char *TAG_PROCESS_ADS = "[PROCESS_ADS]";
 
 /**
@@ -125,7 +125,7 @@ const char *TAG_PROCESS_ADS = "[PROCESS_ADS]";
  *  configuracao
  */
 static void vTaskSD(void *pvArg);
-TaskHandle_t handleTask_SD = NULL;
+TaskHandle_t handleTaskSD = NULL;
 const char *TAG_SD = "[SD]";
 
 //============================================
@@ -139,10 +139,10 @@ void app_main(void)
     TempoDeAmostragem.tempo_decorrido = 0;
     TempoDeAmostragem.valor_contador = 0;
 
-    I2C_config(&handle_I2Cmaster);
+    I2C_config(&handleI2Cmaster);
     SD_config(&mount_sd, &host, &slot_config);
     GPIO_config();
-    Timer_config(&handle_Timer);
+    Timer_config(&handleTimer);
 
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
@@ -162,15 +162,12 @@ void app_main(void)
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTask_ADS115);
-    // vTaskSuspend(handleTask_ADS115);
 
     // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTask_ProcessADS);
-    // vTaskSuspend(handleTask_ProcessADS);
+    //             NULL, 1, &handleTaskProcessADS);
 
     // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTask_SD);
-    // vTaskSuspend(handleTask_SD);
+    //             NULL, 1, &handleTaskSD);
 
     // while (1)
     // {
@@ -208,7 +205,7 @@ static void vTaskADS1115(void *pvArg)
 {
     ads111x_struct_t ads;
 
-    ESP_LOGI(TAG_ADS, "BEGIN: %s", esp_err_to_name(ads111x_begin(&handle_I2Cmaster, ADS111X_ADDR, &ads)));
+    ESP_LOGI(TAG_ADS, "BEGIN: %s", esp_err_to_name(ads111x_begin(&handleI2Cmaster, ADS111X_ADDR, &ads)));
     ads111x_set_gain(ADS111X_GAIN_4V096, &ads);
     ads111x_set_mode(ADS111X_MODE_SINGLE_SHOT, &ads);
     ads111x_set_data_rate(ADS111X_DATA_RATE_32, &ads);
@@ -265,7 +262,7 @@ static void vTaskProcessADS(void *pvArg)
         SistemaData.p0 = (((v_0 / 5) - 0.04) / 0.018) + c_0;
         SistemaData.p1 = (((v_1 / 5) - 0.04) / 0.018) + c_1;
 
-        gptimer_get_raw_count(handle_Timer, &(TempoDeAmostragem.valor_contador));
+        gptimer_get_raw_count(handleTimer, &(TempoDeAmostragem.valor_contador));
         TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
 #if PRINTS_SERIAL
@@ -275,7 +272,7 @@ static void vTaskProcessADS(void *pvArg)
         fflush(stdout);
 #endif
 
-        gptimer_set_raw_count(handle_Timer, 0);
+        gptimer_set_raw_count(handleTimer, 0);
 
         xSemaphoreGive(Semaphore_ProcessADS_to_SD);
 
