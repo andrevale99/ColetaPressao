@@ -28,7 +28,7 @@
 
 #define CONSOLE_MAX_LEN_CMD 1024
 
-#define PRINTS_SERIAL 0
+#define PRINTS_SERIAL 1
 
 //============================================
 //  VARS GLOBAIS
@@ -141,10 +141,15 @@ void app_main(void)
     TempoDeAmostragem.valor_contador = 0;
 
     I2C_config(&handleI2Cmaster);
+
+#if !PRINTS_SERIAL
     SD_config(&mount_sd, &host, &slot_config);
+#endif
+
     GPIO_config();
     Timer_config(&handleTimer);
 
+#if !PRINTS_SERIAL
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
 
@@ -160,12 +165,13 @@ void app_main(void)
 
     cmd_register_motor(&EventBits_cmd, &handleEventBits_cmd);
     cmd_register_sd();
+#endif
 
-    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-    //             NULL, 1, &handleTask_ADS115);
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+                NULL, 1, &handleTaskADS115);
 
-    // xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTaskProcessADS);
+    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTaskProcessADS);
 
     // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
     //             NULL, 1, &handleTaskSD);
