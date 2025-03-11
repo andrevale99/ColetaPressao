@@ -153,6 +153,7 @@ void app_main(void)
     GPIO_config();
     Timer_config(&handleTimer);
 
+#if !PRINTS_SERIAL
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
 
@@ -168,12 +169,13 @@ void app_main(void)
 
     cmd_register_motor(&EventBits_cmd, &handleEventBits_cmd);
     cmd_register_sd();
+#endif
 
-    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-    //             NULL, 1, &handleTask_ADS115);
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+                NULL, 1, &handleTaskADS115);
 
-    // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTaskSD);
+    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTaskSD);
 
     // while (1)
     // {
