@@ -18,6 +18,7 @@
 #include <esp_console.h>
 #include <esp_check.h>
 
+#include "Macros.h"
 #include "ads111x.h"
 #include "Configs.h"
 #include "SD_terminal.h"
@@ -171,11 +172,22 @@ void app_main(void)
     cmd_register_sd();
 #endif
 
+<<<<<<< HEAD
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
                 NULL, 1, &handleTaskADS115);
 
     xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTaskSD);
+=======
+    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+    //             NULL, 1, &handleTask_ADS115);
+
+    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTask_ProcessADS);
+
+    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 1, &handleTask_SD);
+>>>>>>> Terminal
 
     // while (1)
     // {
@@ -306,13 +318,12 @@ static void vTaskSD(void *pvArg)
 
     while (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
     {
-        ESP_LOGW(TAG_SD, "Insira ou verifique o SD");
+        sd_set_bitmask(false, SD_MASK_DETECTED);
 
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    // Card has been initialized, print its properties
-    sdmmc_card_print_info(stdout, card);
+    sd_set_bitmask(true, SD_MASK_DETECTED);
 
     check_file_exist(arq, &file_name[0]);
 
@@ -322,11 +333,12 @@ static void vTaskSD(void *pvArg)
 
         if (arq != NULL)
         {
-            ESP_LOGI(TAG_SD, "Arquivo %s CRIADO", file_name);
+            sd_set_bitmask(true, SD_MASK_FILE_CREATED);
+            sd_file_name(&file_name[0]);
             break;
         }
 
-        ESP_LOGW(TAG_SD, "Nao foi possivel abrir o arquivo: %s", file_name);
+        sd_set_bitmask(false, SD_MASK_FILE_CREATED);
 
         vTaskDelay(pdMS_TO_TICKS(1000));
     } while (arq == NULL);
@@ -341,21 +353,21 @@ static void vTaskSD(void *pvArg)
     {
         if (xSemaphoreTake(Semaphore_ProcessADS_to_SD, 10) == pdTRUE)
         {
-            FILE *arq = fopen(file_name, "a");
+            arq = fopen(file_name, "a");
 
             snprintf(buffer_sd, SD_BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
                      (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ), SistemaData.p0, SistemaData.p0Total,
                      SistemaData.p1, SistemaData.p1Total);
 
             if (fprintf(arq, buffer_sd) <= 0)
-                gpio_set_level(LED_SD, 0);
+                sd_set_bitmask(false, SD_MASK_ON_WRITE);
 
-            gpio_set_level(LED_SD, 1);
+            sd_set_bitmask(true, SD_MASK_ON_WRITE);
 
             fclose(arq);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(32));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     fclose(arq);
