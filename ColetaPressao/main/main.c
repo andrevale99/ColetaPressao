@@ -101,11 +101,11 @@ esp_console_repl_t *repl = NULL;
 void check_file_exist(FILE *_arq, char *file_name);
 
 /**
- * @brief Calcula o offset para estabilizar a pressao 
+ * @brief Calcula o offset para estabilizar a pressao
  * considerando a pressao diferencial, ou seja, ao ligar
  * o sistema o sistema ira considerar a pressao o qual o sensor
  * está captando como um novo ZERO
- * 
+ *
  * @param sistema Ponteiro para a estrutura de dados do sistema
  * @param ads Estrutura do sensor
  */
@@ -113,7 +113,7 @@ void set_offset_pressure(struct sistema_t *sistema, ads111x_struct_t *ads);
 
 /**
  * @brief Calcula o valor da pressao
- * 
+ *
  * @param sistema Ponteiro para a estrutura de dados do sistema
  */
 void process_pressures(struct sistema_t *sistema);
@@ -224,7 +224,9 @@ void set_offset_pressure(struct sistema_t *sistema, ads111x_struct_t *ads)
     sistema->offset0 = 0.0;
     sistema->offset1 = 0.0;
 
-    int cont = 0;
+    uint8_t cont = 0;
+    float soma_p0 = 0;
+    float soma_p1 = 0;
 
     for (cont = 0; cont < 100; ++cont)
     {
@@ -242,14 +244,12 @@ void set_offset_pressure(struct sistema_t *sistema, ads111x_struct_t *ads)
         sistema->p0Total = (((v_0 / 5) - 0.04) / 0.018);
         sistema->p1Total = (((v_1 / 5) - 0.04) / 0.018);
 
-        if (cont == 20)
-        {
-            if (round(sistema->p0 * 100) > 1 || round(sistema->p0 * 100) < -1)
-                sistema->offset0 = -sistema->p0;
-            if (round(sistema->p1 * 100) > 1 || round(sistema->p1 * 100) < -1)
-                sistema->offset1 = -sistema->p1;
-        }
+        soma_p0 += sistema->p0Total;
+        soma_p1 += sistema->p1Total;
     }
+
+    sistema->offset0 = -(soma_p0 / 100);
+    sistema->offset1 = -(soma_p1 / 100);
 }
 
 void process_pressures(struct sistema_t *sistema)
