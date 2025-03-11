@@ -172,22 +172,11 @@ void app_main(void)
     cmd_register_sd();
 #endif
 
-<<<<<<< HEAD
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
                 NULL, 1, &handleTaskADS115);
 
     xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTaskSD);
-=======
-    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-    //             NULL, 1, &handleTask_ADS115);
-
-    xTaskCreate(vTaskProcessADS, "PROCESS ADS TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 1, &handleTask_ProcessADS);
-
-    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 1, &handleTask_SD);
->>>>>>> Terminal
 
     // while (1)
     // {
