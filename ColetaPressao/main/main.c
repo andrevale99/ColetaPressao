@@ -28,7 +28,7 @@
 
 #define CONSOLE_MAX_LEN_CMD 1024
 
-#define PRINTS_SERIAL 0
+#define PRINTS_SERIAL 1
 
 //============================================
 //  VARS GLOBAIS
@@ -150,7 +150,11 @@ void app_main(void)
     TempoDeAmostragem.valor_contador = 0;
 
     I2C_config(&handleI2Cmaster);
+
+#if !PRINTS_SERIAL
     SD_config(&mount_sd, &host, &slot_config);
+#endif
+
     GPIO_config();
     Timer_config(&handleTimer);
 
@@ -175,8 +179,10 @@ void app_main(void)
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
                 NULL, 1, &handleTaskADS115);
 
+#if !PRINTS_SERIAL
     xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTaskSD);
+#endif
 
     // while (1)
     // {
