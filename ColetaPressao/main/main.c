@@ -28,7 +28,7 @@
 
 #define CONSOLE_MAX_LEN_CMD 1024
 
-#define PRINTS_SERIAL 1
+#define PRINTS_SERIAL 0
 
 //============================================
 //  VARS GLOBAIS
@@ -150,15 +150,10 @@ void app_main(void)
     TempoDeAmostragem.valor_contador = 0;
 
     I2C_config(&handleI2Cmaster);
-
-#if !PRINTS_SERIAL
     SD_config(&mount_sd, &host, &slot_config);
-#endif
-
     GPIO_config();
     Timer_config(&handleTimer);
 
-#if !PRINTS_SERIAL
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
 
@@ -174,15 +169,12 @@ void app_main(void)
 
     cmd_register_motor(&EventBits_cmd, &handleEventBits_cmd);
     cmd_register_sd();
-#endif
 
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
                 NULL, 1, &handleTaskADS115);
 
-#if !PRINTS_SERIAL
     xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTaskSD);
-#endif
 
     // while (1)
     // {
@@ -262,13 +254,6 @@ void process_pressures(struct sistema_t *sistema)
 
     sistema->p0 = (((v_0 / 5) - 0.04) / 0.018) + sistema->offset0;
     sistema->p1 = (((v_1 / 5) - 0.04) / 0.018) + sistema->offset1;
-
-#if PRINTS_SERIAL
-    printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-           TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, sistema->p0, sistema->p0Total,
-           sistema->p1, sistema->p1Total);
-    fflush(stdout);
-#endif
 }
 
 static void vTaskADS1115(void *pvArg)
@@ -281,6 +266,8 @@ static void vTaskADS1115(void *pvArg)
     ads111x_set_data_rate(ADS111X_DATA_RATE_32, &ads);
 
     set_offset_pressure(&SistemaData, &ads);
+
+    gptimer_start(handleTimer);
 
     while (1)
     {
@@ -346,13 +333,16 @@ static void vTaskSD(void *pvArg)
 
     while (1)
     {
-        if (xSemaphoreTake(Semaphore_ProcessADS_to_SD, 10) == pdTRUE)
+        if (xSemaphoreTake(Semaphore_ProcessADS_to_SD, pdMS_TO_TICKS(10)) == pdTRUE)
         {
             arq = fopen(file_name, "a");
 
             snprintf(buffer_sd, SD_BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
                      (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ), SistemaData.p0, SistemaData.p0Total,
                      SistemaData.p1, SistemaData.p1Total);
+
+            printf("%s", buffer_sd);
+            fflush(stdout);
 
             if (fprintf(arq, buffer_sd) <= 0)
                 sd_set_bitmask(false, SD_MASK_ON_WRITE);
@@ -362,7 +352,7 @@ static void vTaskSD(void *pvArg)
             fclose(arq);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(22));
     }
 
     fclose(arq);

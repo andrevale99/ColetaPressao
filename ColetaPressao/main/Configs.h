@@ -100,7 +100,6 @@ esp_err_t Timer_config(gptimer_handle_t *handle_Timer)
     gptimer_set_raw_count(*handle_Timer, 0);
 
     gptimer_enable(*handle_Timer);
-    gptimer_start(*handle_Timer);
 
     return ESP_OK;
 }
