@@ -13,15 +13,6 @@
 #define CMD_MOTOR_BIT (1 << 0)
 
 /**
- *  @brief Funcao de controle atrelado ao Terminal
- *  para ligar e desligar o motor
- *
- *  @param argc Quantidade de argumentos
- *  @param argv String dos valores
- */
-static int motor_cmd(int argc, char **argv);
-
-/**
  * @brief Funcao para registrar do Motor no terminal
  *
  * @param _EventBits_cmd_from_main A variavel de Bits de evento que sera

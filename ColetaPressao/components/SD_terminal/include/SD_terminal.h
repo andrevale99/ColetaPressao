@@ -25,15 +25,8 @@
 
 #define SD_MASK_DETECTED (1 << 0)
 #define SD_MASK_ON_WRITE (1 << 1)
-#define SD_MASK_FILE_CREATED (1 << 2)
-
-/**
- *  @brief Funcao atrelado ao SD
- *
- *  @param argc Quantidade de argumentos
- *  @param argv String dos valores
- */
-static int sd_terminal(int argc, char **argv);
+#define SD_MASK_FILE_OPENED (1 << 2)
+#define SD_MASK_START (1 << 3)
 
 /**
  * @brief Funcao para registrar de SD no terminal
@@ -55,9 +48,17 @@ esp_err_t cmd_register_sd(void);
 void sd_set_bitmask(bool flag, uint8_t bit);
 
 /**
- * @brief Nome do arquivo o qual esta sendo realizado 
- * a escrita
+ * @brief Retorna a mascara de bits do comando de SD
+ *
+ * @return bits do comando de SD
  */
-void sd_file_name(char *_file_name);
+uint8_t sd_get_bitmask(void);
+
+/**
+ * @brief Retorna o nome do arquivo que foi renomeado
+ *
+ * @return Ponteiro para a string do novo nome
+ */
+char *sd_get_file_name(void);
 
 #endif

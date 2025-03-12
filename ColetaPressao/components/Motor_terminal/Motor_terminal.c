@@ -10,6 +10,13 @@ static struct
     struct arg_end *end;
 } motor_args;
 
+/**
+ *  @brief Funcao de controle atrelado ao Terminal
+ *  para ligar e desligar o motor
+ *
+ *  @param argc Quantidade de argumentos
+ *  @param argv String dos valores
+ */
 static int motor_terminal(int argc, char **argv)
 {
     if (strcmp(argv[1], "S") == 0)

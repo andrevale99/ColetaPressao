@@ -28,13 +28,9 @@
 
 #define CONSOLE_MAX_LEN_CMD 1024
 
-#define PRINTS_SERIAL 1
-
 //============================================
 //  VARS GLOBAIS
 //============================================
-
-struct dirent *dirs = NULL;
 
 struct sistema_t
 {
@@ -55,7 +51,9 @@ struct timer_sample_t
     float tempo_decorrido;
 } TempoDeAmostragem;
 
+FILE *arq = NULL;
 char buffer_sd[SD_BUFFER_SIZE];
+const char mount_point[] = SD_MOUNT_POINT;
 
 /// @brief Semaphore entre o processo dos dados do ADS111X com
 /// a gravcao do SD.
@@ -86,19 +84,6 @@ esp_console_repl_t *repl = NULL;
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
-
-/**
- *  @brief Funcao que ira criar um arquivo com o
- *  sufixo diferente, para nao sobrescrever os arquivos
- *  e difenrenciar qual foi o utlimo arquivo criado.
- *
- *  @param _arq Ponteiro para a variavel do tipo FILE
- *  o qual ira manipular o arquivo.
- *
- *  @param file_name Ponteiro para uma cadeia de caracteres
- *  que ira armazenar o nome do arquivo.
- */
-void check_file_exist(FILE *_arq, char *file_name);
 
 /**
  * @brief Calcula o offset para estabilizar a pressao
@@ -138,6 +123,10 @@ static void vTaskSD(void *pvArg);
 TaskHandle_t handleTaskSD = NULL;
 const char *TAG_SD = "[SD]";
 
+static void vTaskCheckSD(void *pvArg);
+TaskHandle_t handleTaskCheckSD = NULL;
+const char *TAG_CHECK_SD = "[CHECK_SD]";
+
 //============================================
 //  MAIN
 //============================================
@@ -170,43 +159,30 @@ void app_main(void)
     cmd_register_motor(&EventBits_cmd, &handleEventBits_cmd);
     cmd_register_sd();
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-                NULL, 1, &handleTaskADS115);
+    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 4,
+    //             NULL, 1, &handleTaskADS115);
 
-    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
+    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 4,
                 NULL, 1, &handleTaskSD);
+    vTaskSuspend(handleTaskSD);
 
-    // while (1)
-    // {
-    //     vTaskDelay(pdMS_TO_TICKS(100));
-    // }
+    xTaskCreate(vTaskCheckSD, "PROCESS CHECK SD", configMINIMAL_STACK_SIZE + 1024 * 1,
+                NULL, 1, &handleTaskCheckSD);
+
+    while (1)
+    {
+        if (sd_get_bitmask() & SD_MASK_START)
+            vTaskResume(handleTaskSD);
+        else if (!(sd_get_bitmask() & SD_MASK_START))
+            vTaskSuspend(handleTaskSD);
+
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
 }
 
 //============================================
 //  FUNCS
 //============================================
-
-void check_file_exist(FILE *_arq, char *file_name)
-{
-    for (uint8_t sufixo = 0; sufixo < UINT8_MAX; ++sufixo)
-    {
-        snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                 SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
-
-        _arq = fopen(file_name, "r");
-        if (_arq == NULL)
-        {
-            snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                     SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
-
-            return;
-        }
-        fclose(_arq);
-    }
-
-    snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-             SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", 0);
-}
 
 void set_offset_pressure(struct sistema_t *sistema, ads111x_struct_t *ads)
 {
@@ -294,33 +270,17 @@ static void vTaskADS1115(void *pvArg)
 
 static void vTaskSD(void *pvArg)
 {
-    FILE *arq = NULL;
-    const char mount_point[] = SD_MOUNT_POINT;
-    char file_name[SD_MAX_LEN_FILE_NAME];
-
-    while (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
-    {
-        sd_set_bitmask(false, SD_MASK_DETECTED);
-
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-
-    sd_set_bitmask(true, SD_MASK_DETECTED);
-
-    check_file_exist(arq, &file_name[0]);
-
     do
     {
-        arq = fopen(file_name, "a");
+        arq = fopen(sd_get_file_name(), "a");
 
         if (arq != NULL)
         {
-            sd_set_bitmask(true, SD_MASK_FILE_CREATED);
-            sd_file_name(&file_name[0]);
+            sd_set_bitmask(true, SD_MASK_FILE_OPENED);
             break;
         }
 
-        sd_set_bitmask(false, SD_MASK_FILE_CREATED);
+        sd_set_bitmask(false, SD_MASK_FILE_OPENED);
 
         vTaskDelay(pdMS_TO_TICKS(1000));
     } while (arq == NULL);
@@ -335,7 +295,7 @@ static void vTaskSD(void *pvArg)
     {
         if (xSemaphoreTake(Semaphore_ProcessADS_to_SD, pdMS_TO_TICKS(10)) == pdTRUE)
         {
-            arq = fopen(file_name, "a");
+            arq = fopen(sd_get_file_name(), "a");
 
             snprintf(buffer_sd, SD_BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
                      (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ), SistemaData.p0, SistemaData.p0Total,
@@ -356,4 +316,20 @@ static void vTaskSD(void *pvArg)
     }
 
     fclose(arq);
+}
+
+static void vTaskCheckSD(void *pvArg)
+{
+    while (1)
+    {
+        while (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
+        {
+            sd_set_bitmask(false, SD_MASK_DETECTED);
+
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        sd_set_bitmask(true, SD_MASK_DETECTED);
+
+        vTaskSuspend(handleTaskCheckSD);
+    }
 }
