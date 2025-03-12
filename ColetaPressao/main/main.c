@@ -174,7 +174,10 @@ void app_main(void)
         if (sd_get_bitmask() & SD_MASK_START)
             vTaskResume(handleTaskSD);
         else if (!(sd_get_bitmask() & SD_MASK_START))
+        {
             vTaskSuspend(handleTaskSD);
+            sd_set_bitmask(false, SD_MASK_ON_WRITE);
+        }
 
         vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -291,6 +294,7 @@ static void vTaskSD(void *pvArg)
 
     fclose(arq);
 
+    long cnt = 0;
     while (1)
     {
         if (xSemaphoreTake(Semaphore_ProcessADS_to_SD, pdMS_TO_TICKS(10)) == pdTRUE)
@@ -312,10 +316,21 @@ static void vTaskSD(void *pvArg)
             fclose(arq);
         }
 
+        // debug
+        arq = fopen(sd_get_file_name(), "a");
+        snprintf(buffer_sd, SD_BUFFER_SIZE, "%ld\n", cnt++);
+        if (fprintf(arq, buffer_sd) <= 0)
+            sd_set_bitmask(false, SD_MASK_ON_WRITE);
+
+        sd_set_bitmask(true, SD_MASK_ON_WRITE);
+        fclose(arq);
+        // debug
+
         vTaskDelay(pdMS_TO_TICKS(22));
     }
 
-    fclose(arq);
+    if (arq != NULL)
+        fclose(arq);
 }
 
 static void vTaskCheckSD(void *pvArg)
