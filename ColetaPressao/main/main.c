@@ -162,20 +162,19 @@ void app_main(void)
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 4,
     //             NULL, 1, &handleTaskADS115);
 
-    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 4,
-                NULL, 1, &handleTaskSD);
-    vTaskSuspend(handleTaskSD);
-
-    xTaskCreate(vTaskCheckSD, "PROCESS CHECK SD", configMINIMAL_STACK_SIZE + 1024 * 1,
+    xTaskCreate(vTaskCheckSD, "TASK CHECK SD", configMINIMAL_STACK_SIZE + 1024 * 2,
                 NULL, 1, &handleTaskCheckSD);
 
     while (1)
     {
         if (sd_get_bitmask() & SD_MASK_START)
-            vTaskResume(handleTaskSD);
+        {
+            xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 4,
+                        NULL, 1, &handleTaskSD);
+        }
         else if (!(sd_get_bitmask() & SD_MASK_START))
         {
-            vTaskSuspend(handleTaskSD);
+            vTaskDelete(handleTaskSD);
             sd_set_bitmask(false, SD_MASK_ON_WRITE);
         }
 
@@ -284,7 +283,8 @@ static void vTaskSD(void *pvArg)
         }
 
         sd_set_bitmask(false, SD_MASK_FILE_OPENED);
-
+        ESP_LOGE(TAG_SD, "ERRO ao brir %s", sd_get_file_name());
+        
         vTaskDelay(pdMS_TO_TICKS(1000));
     } while (arq == NULL);
 
