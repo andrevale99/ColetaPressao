@@ -170,8 +170,8 @@ void app_main(void)
     cmd_register_motor(&EventBits_cmd, &handleEventBits_cmd);
     cmd_register_sd();
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-                NULL, 1, &handleTaskADS115);
+    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+    //             NULL, 1, &handleTaskADS115);
 
     xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTaskSD);
@@ -331,6 +331,7 @@ static void vTaskSD(void *pvArg)
 
     fclose(arq);
 
+    long cont = 0;
     while (1)
     {
         if (xSemaphoreTake(Semaphore_ProcessADS_to_SD, pdMS_TO_TICKS(10)) == pdTRUE)
@@ -351,6 +352,21 @@ static void vTaskSD(void *pvArg)
 
             fclose(arq);
         }
+
+        arq = fopen(file_name, "a");
+
+        snprintf(buffer_sd, SD_BUFFER_SIZE, "%ld",
+                 cont++);
+
+        printf("%s", buffer_sd);
+        fflush(stdout);
+
+        if (fprintf(arq, buffer_sd) <= 0)
+            sd_set_bitmask(false, SD_MASK_ON_WRITE);
+
+        sd_set_bitmask(true, SD_MASK_ON_WRITE);
+
+        fclose(arq);
 
         vTaskDelay(pdMS_TO_TICKS(22));
     }
