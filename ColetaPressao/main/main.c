@@ -21,8 +21,7 @@
 #include "Macros.h"
 #include "ads111x.h"
 #include "Configs.h"
-#include "SD_terminal.h"
-#include "Motor_terminal.h"
+#include "SDTerminal.h"
 
 #define TERMINAL_PROMPT "LabFlu"
 
@@ -167,7 +166,6 @@ void app_main(void)
     esp_console_new_repl_uart(&hw_config, &repl_config, &repl);
     esp_console_start_repl(repl);
 
-    cmd_register_motor(&EventBits_cmd, &handleEventBits_cmd);
     cmd_register_sd();
 
     // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
@@ -300,12 +298,8 @@ static void vTaskSD(void *pvArg)
 
     while (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
     {
-        sd_set_bitmask(false, SD_MASK_DETECTED);
-
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
-
-    sd_set_bitmask(true, SD_MASK_DETECTED);
 
     check_file_exist(arq, &file_name[0]);
 
@@ -314,13 +308,8 @@ static void vTaskSD(void *pvArg)
         arq = fopen(file_name, "a");
 
         if (arq != NULL)
-        {
-            sd_set_bitmask(true, SD_MASK_FILE_CREATED);
-            sd_file_name(&file_name[0]);
             break;
-        }
 
-        sd_set_bitmask(false, SD_MASK_FILE_CREATED);
 
         vTaskDelay(pdMS_TO_TICKS(1000));
     } while (arq == NULL);
@@ -345,11 +334,6 @@ static void vTaskSD(void *pvArg)
             printf("%s", buffer_sd);
             fflush(stdout);
 
-            if (fprintf(arq, buffer_sd) <= 0)
-                sd_set_bitmask(false, SD_MASK_ON_WRITE);
-
-            sd_set_bitmask(true, SD_MASK_ON_WRITE);
-
             fclose(arq);
         }
 
@@ -360,11 +344,6 @@ static void vTaskSD(void *pvArg)
 
         printf("%s", buffer_sd);
         fflush(stdout);
-
-        if (fprintf(arq, buffer_sd) <= 0)
-            sd_set_bitmask(false, SD_MASK_ON_WRITE);
-
-        sd_set_bitmask(true, SD_MASK_ON_WRITE);
 
         fclose(arq);
 
