@@ -38,7 +38,7 @@ esp_err_t ads111x_set_gain(ads111x_gain_t gain, ads111x_struct_t *ads)
 
     if (xErrorCheck != ESP_OK)
     {
-        ESP_LOGW(TAG, "ERRO na escrita do ponteiro: %s", esp_err_to_name(xErrorCheck));
+        // ESP_LOGW(TAG, "ERRO na escrita do ponteiro: %s", esp_err_to_name(xErrorCheck));
         return xErrorCheck;
     }
 
@@ -51,7 +51,7 @@ esp_err_t ads111x_set_gain(ads111x_gain_t gain, ads111x_struct_t *ads)
 
     if (xErrorCheck != ESP_OK)
     {
-        ESP_LOGW(TAG, "ERRO na escrita no registrador: %s", esp_err_to_name(xErrorCheck));
+        // ESP_LOGW(TAG, "ERRO na escrita no registrador: %s", esp_err_to_name(xErrorCheck));
         return xErrorCheck;
     }
 
@@ -71,7 +71,7 @@ esp_err_t ads111x_set_mode(ads111x_mode_t mode, ads111x_struct_t *ads)
 
     if (xErrorCheck != ESP_OK)
     {
-        ESP_LOGW(TAG, "ERRO na escrita do ponteiro: %s", esp_err_to_name(xErrorCheck));
+        // ESP_LOGW(TAG, "ERRO na escrita do ponteiro: %s", esp_err_to_name(xErrorCheck));
         return xErrorCheck;
     }
 
@@ -84,7 +84,7 @@ esp_err_t ads111x_set_mode(ads111x_mode_t mode, ads111x_struct_t *ads)
 
     if (xErrorCheck != ESP_OK)
     {
-        ESP_LOGW(TAG, "ERRO na escrita no registrador: %s", esp_err_to_name(xErrorCheck));
+        // ESP_LOGW(TAG, "ERRO na escrita no registrador: %s", esp_err_to_name(xErrorCheck));
         return xErrorCheck;
     }
 
@@ -104,7 +104,7 @@ esp_err_t ads111x_set_data_rate(ads111x_data_rate_t rate, ads111x_struct_t *ads)
 
     if (xErrorCheck != ESP_OK)
     {
-        ESP_LOGW(TAG, "ERRO na escrita do ponteiro: %s", esp_err_to_name(xErrorCheck));
+        // ESP_LOGW(TAG, "ERRO na escrita do ponteiro: %s", esp_err_to_name(xErrorCheck));
         return xErrorCheck;
     }
 
@@ -117,7 +117,7 @@ esp_err_t ads111x_set_data_rate(ads111x_data_rate_t rate, ads111x_struct_t *ads)
 
     if (xErrorCheck != ESP_OK)
     {
-        ESP_LOGW(TAG, "ERRO na escrita no registrador: %s", esp_err_to_name(xErrorCheck));
+        // ESP_LOGW(TAG, "ERRO na escrita no registrador: %s", esp_err_to_name(xErrorCheck));
         return xErrorCheck;
     }
 
@@ -137,7 +137,7 @@ esp_err_t ads111x_set_input_mux(ads111x_mux_t mux, ads111x_struct_t *ads)
 
     if (xErrorCheck != ESP_OK)
     {
-        ESP_LOGW(TAG, "ERRO na escrita do ponteiro: %s", esp_err_to_name(xErrorCheck));
+        // ESP_LOGW(TAG, "ERRO na escrita do ponteiro: %s", esp_err_to_name(xErrorCheck));
         return xErrorCheck;
     }
 
@@ -150,7 +150,7 @@ esp_err_t ads111x_set_input_mux(ads111x_mux_t mux, ads111x_struct_t *ads)
 
     if (xErrorCheck != ESP_OK)
     {
-        ESP_LOGW(TAG, "ERRO na escrita no registrador: %s", esp_err_to_name(xErrorCheck));
+        // ESP_LOGW(TAG, "ERRO na escrita no registrador: %s", esp_err_to_name(xErrorCheck));
         return xErrorCheck;
     }
 

@@ -17,17 +17,26 @@
 #include <esp_vfs_fat.h>
 #include <esp_console.h>
 #include <esp_check.h>
+#include <argtable3/argtable3.h>
 
 #include "Macros.h"
 #include "ads111x.h"
 #include "Configs.h"
-#include "SDTerminal.h"
 
 #define TERMINAL_PROMPT "LabFlu"
 
+#define SD_BUFFER_SIZE 1024
+
+#define SD_MOUNT_POINT "/"
+#define SD_MAX_LEN_FILE_NAME 256
+
 #define CONSOLE_MAX_LEN_CMD 1024
 
-#define PRINTS_SERIAL 1
+#define EVENT_BIT_START_TASKS (1 << 0)
+#define EVENT_BIT_SD_ON_WRITE (1 << 1)
+#define EVENT_BIT_SD_OK (1 << 23)
+
+// #define PRINTS_SERIAL
 
 //============================================
 //  VARS GLOBAIS
@@ -55,6 +64,19 @@ struct timer_sample_t
 } TempoDeAmostragem;
 
 char buffer_sd[SD_BUFFER_SIZE];
+
+static struct
+{
+    struct arg_str *status;
+    struct arg_str *check;
+    struct arg_str *rename;
+    struct arg_str *start_stop;
+    struct arg_end *end;
+} sd_args;
+
+FILE *arq = NULL;
+const char mount_point[] = SD_MOUNT_POINT;
+char file_name[SD_MAX_LEN_FILE_NAME];
 
 /// @brief Semaphore entre o processo dos dados do ADS111X com
 /// a gravcao do SD.
@@ -100,6 +122,20 @@ esp_console_repl_t *repl = NULL;
 void check_file_exist(FILE *_arq, char *file_name);
 
 /**
+ *  @brief Funcao atrelado ao SD
+ *
+ *  @param argc Quantidade de argumentos
+ *  @param argv String dos valores
+ */
+int sd_terminal(int argc, char **argv);
+
+/**
+ * @brief Registra os comandos do SD
+ * no terminal
+ */
+esp_err_t cmd_register_sd(void);
+
+/**
  * @brief Calcula o offset para estabilizar a pressao
  * considerando a pressao diferencial, ou seja, ao ligar
  * o sistema o sistema ira considerar a pressao o qual o sensor
@@ -137,13 +173,25 @@ static void vTaskSD(void *pvArg);
 TaskHandle_t handleTaskSD = NULL;
 const char *TAG_SD = "[SD]";
 
+void setEventBit(uint32_t bit)
+{
+    EventBits_cmd = xEventGroupSetBits(handleEventBits_cmd, bit);
+}
+
+void clearEventBit(uint32_t bit)
+{
+    EventBits_cmd = xEventGroupClearBits(handleEventBits_cmd, bit);
+}
+
 //============================================
 //  MAIN
 //============================================
 void app_main(void)
 {
     Semaphore_ProcessADS_to_SD = xSemaphoreCreateBinary();
+
     handleEventBits_cmd = xEventGroupCreate();
+    EventBits_cmd = xEventGroupClearBits(handleEventBits_cmd, 0xFFFF);
 
     TempoDeAmostragem.tempo_decorrido = 0;
     TempoDeAmostragem.valor_contador = 0;
@@ -168,16 +216,34 @@ void app_main(void)
 
     cmd_register_sd();
 
-    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-    //             NULL, 1, &handleTaskADS115);
+    if (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
+        clearEventBit(EVENT_BIT_SD_OK);
+    else
+        setEventBit(EVENT_BIT_SD_OK);
+
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+                NULL, 1, &handleTaskADS115);
+    vTaskSuspend(handleTaskADS115);
 
     xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTaskSD);
+    vTaskSuspend(handleTaskSD);
 
-    // while (1)
-    // {
-    //     vTaskDelay(pdMS_TO_TICKS(100));
-    // }
+    while (1)
+    {
+        if (EventBits_cmd & EVENT_BIT_START_TASKS)
+        {
+            vTaskResume(handleTaskADS115);
+            vTaskResume(handleTaskSD);
+        }
+        else
+        {
+            vTaskSuspend(handleTaskSD);
+            vTaskSuspend(handleTaskADS115);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
 }
 
 //============================================
@@ -189,13 +255,13 @@ void check_file_exist(FILE *_arq, char *file_name)
     for (uint8_t sufixo = 0; sufixo < UINT8_MAX; ++sufixo)
     {
         snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                 SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
+                 SD_MOUNT_POINT CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
 
         _arq = fopen(file_name, "r");
         if (_arq == NULL)
         {
             snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                     SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
+                     SD_MOUNT_POINT CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
 
             return;
         }
@@ -203,7 +269,75 @@ void check_file_exist(FILE *_arq, char *file_name)
     }
 
     snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-             SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", 0);
+             SD_MOUNT_POINT CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", 0);
+}
+
+int sd_terminal(int argc, char **argv)
+{
+    static uint8_t cnt = 0;
+    for (cnt = 1; cnt < argc; ++cnt)
+    {
+        if (strcmp(argv[cnt], "status") == 0)
+        {
+            if (EventBits_cmd & EVENT_BIT_SD_OK)
+                printf("%s SD Card ENCONTRADO %s \n", BHGRN, COLOR_RESET);
+            else
+                printf("%s SD Card NAO encontrado %s \n", BHRED, COLOR_RESET);
+
+            if (EventBits_cmd & EVENT_BIT_SD_ON_WRITE)
+                printf("%s Gravando %s \n", BHGRN, COLOR_RESET);
+            else
+                printf("%s Erro na Gravacao %s \n", BHRED, COLOR_RESET);
+        }
+
+        if ((strcmp(argv[cnt], "rename") == 0))
+        {
+            cnt += 1;
+            printf("Rename: %s to ", file_name);
+
+            snprintf(file_name, SD_MAX_LEN_FILE_NAME,
+                     SD_MOUNT_POINT "%s.txt", argv[cnt]);
+
+            printf("%s \n", file_name);
+        }
+
+        if ((strcmp(argv[cnt], "check") == 0))
+        {
+            if (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
+                clearEventBit(EVENT_BIT_SD_OK);
+            else
+                setEventBit(EVENT_BIT_SD_OK);
+        }
+
+        if ((strcmp(argv[cnt], "s") == 0))
+            setEventBit(EVENT_BIT_START_TASKS);
+        else if ((strcmp(argv[cnt], "t") == 0))
+            clearEventBit(EVENT_BIT_START_TASKS);
+    }
+
+    printf("\n");
+    fflush(stdout);
+
+    return 0;
+}
+
+esp_err_t cmd_register_sd(void)
+{
+    sd_args.status = arg_str0(NULL, NULL, "status", "Verifica a situacao do SD");
+    sd_args.check = arg_str0(NULL, NULL, "check", "Tenta Verificar se ha SD");
+    sd_args.rename = arg_str0(NULL, NULL, "rename", "Renomeia o arquivo");
+    sd_args.start_stop = arg_str0(NULL, NULL, "s/t", "Inicia/Pausa a gravacao");
+    sd_args.end = arg_end(1);
+
+    const esp_console_cmd_t sd_cmd = {
+        .command = "sd",
+        .help = "Comandos para verificacao do SD e arquivos",
+        .hint = NULL,
+        .func = sd_terminal,
+        .argtable = &sd_args,
+    };
+
+    return (esp_console_cmd_register(&sd_cmd));
 }
 
 void set_offset_pressure(struct sistema_t *sistema, ads111x_struct_t *ads)
@@ -257,8 +391,20 @@ void process_pressures(struct sistema_t *sistema)
 static void vTaskADS1115(void *pvArg)
 {
     ads111x_struct_t ads;
+    esp_err_t checkError = ESP_OK;
 
-    ESP_LOGI(TAG_ADS, "BEGIN: %s", esp_err_to_name(ads111x_begin(&handleI2Cmaster, ADS111X_ADDR, &ads)));
+    do
+    {
+        checkError = ads111x_begin(&handleI2Cmaster, ADS111X_ADDR, &ads);
+        if (checkError == ESP_OK)
+            break;
+
+        ESP_LOGE(TAG_ADS, "Erro ao chamar o ADS111X");
+        clearEventBit(EVENT_BIT_START_TASKS);
+
+        vTaskDelay(pdMS_TO_TICKS(100));
+    } while (1);
+
     ads111x_set_gain(ADS111X_GAIN_4V096, &ads);
     ads111x_set_mode(ADS111X_MODE_SINGLE_SHOT, &ads);
     ads111x_set_data_rate(ADS111X_DATA_RATE_32, &ads);
@@ -269,13 +415,29 @@ static void vTaskADS1115(void *pvArg)
 
     while (1)
     {
-        ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
-        ads111x_get_conversion_sigle_ended(&ads);
-        SistemaData.adc0 = ads.conversion;
+        checkError = ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
+        if (checkError != ESP_OK)
+        {
+            ESP_LOGE(TAG_ADS, "Erro ao selecionar a porta INPUT (0) do ADS");
+            clearEventBit(EVENT_BIT_START_TASKS);
+        }
+        else
+        {
+            ads111x_get_conversion_sigle_ended(&ads);
+            SistemaData.adc0 = ads.conversion;
+        }
 
-        ads111x_set_input_mux(ADS111X_MUX_1_GND, &ads);
-        ads111x_get_conversion_sigle_ended(&ads);
-        SistemaData.adc1 = ads.conversion;
+        checkError = ads111x_set_input_mux(ADS111X_MUX_1_GND, &ads);
+        if (checkError != ESP_OK)
+        {
+            ESP_LOGE(TAG_ADS, "Erro ao selecionar a porta INPUT (1) do ADS");
+            clearEventBit(EVENT_BIT_START_TASKS);
+        }
+        else
+        {
+            ads111x_get_conversion_sigle_ended(&ads);
+            SistemaData.adc1 = ads.conversion;
+        }
 
         gptimer_get_raw_count(handleTimer, &(TempoDeAmostragem.valor_contador));
         TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
@@ -292,15 +454,6 @@ static void vTaskADS1115(void *pvArg)
 
 static void vTaskSD(void *pvArg)
 {
-    FILE *arq = NULL;
-    const char mount_point[] = SD_MOUNT_POINT;
-    char file_name[SD_MAX_LEN_FILE_NAME];
-
-    while (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
-    {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-
     check_file_exist(arq, &file_name[0]);
 
     do
@@ -310,9 +463,11 @@ static void vTaskSD(void *pvArg)
         if (arq != NULL)
             break;
 
+        ESP_LOGE(TAG_SD, "Erro ao criar o arquivo %s", file_name);
+        clearEventBit(EVENT_BIT_START_TASKS);
 
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    } while (arq == NULL);
+        vTaskDelay(pdMS_TO_TICKS(100));
+    } while (1);
 
     snprintf(buffer_sd, SD_BUFFER_SIZE,
              "Tempo(s)\tP0(KPa)\tP0+Coluna(KPa)\tP1(KPa)\tP1+Coluna(KPa)\n");
@@ -320,9 +475,11 @@ static void vTaskSD(void *pvArg)
 
     fclose(arq);
 
-    long cont = 0;
     while (1)
     {
+        if (!(EventBits_cmd & EVENT_BIT_START_TASKS))
+            vTaskSuspend(handleTaskSD);
+
         if (xSemaphoreTake(Semaphore_ProcessADS_to_SD, pdMS_TO_TICKS(10)) == pdTRUE)
         {
             arq = fopen(file_name, "a");
@@ -331,21 +488,15 @@ static void vTaskSD(void *pvArg)
                      (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ), SistemaData.p0, SistemaData.p0Total,
                      SistemaData.p1, SistemaData.p1Total);
 
+            fprintf(arq, buffer_sd);
+
+#ifdef PRINTS_SERIAL
             printf("%s", buffer_sd);
             fflush(stdout);
+#endif
 
             fclose(arq);
         }
-
-        arq = fopen(file_name, "a");
-
-        snprintf(buffer_sd, SD_BUFFER_SIZE, "%ld",
-                 cont++);
-
-        printf("%s", buffer_sd);
-        fflush(stdout);
-
-        fclose(arq);
 
         vTaskDelay(pdMS_TO_TICKS(22));
     }
