@@ -27,11 +27,7 @@
 
 #define SD_BUFFER_SIZE 1024
 
-<<<<<<< HEAD
-#define SD_MOUNT_POINT "/"
-=======
 #define SD_MOUNT_POINT "/sdcard"
->>>>>>> SDTerminal
 #define SD_MAX_LEN_FILE_NAME 256
 
 #define CONSOLE_MAX_LEN_CMD 1024
@@ -111,18 +107,17 @@ esp_console_repl_t *repl = NULL;
 //============================================
 
 /**
- *  @brief Funcao atrelado ao SD
+ *  @brief Funcao que ira criar um arquivo com o
+ *  sufixo diferente, para nao sobrescrever os arquivos
+ *  e difenrenciar qual foi o utlimo arquivo criado.
  *
- *  @param argc Quantidade de argumentos
- *  @param argv String dos valores
+ *  @param _arq Ponteiro para a variavel do tipo FILE
+ *  o qual ira manipular o arquivo.
+ *
+ *  @param file_name Ponteiro para uma cadeia de caracteres
+ *  que ira armazenar o nome do arquivo.
  */
-int sd_terminal(int argc, char **argv);
-
-/**
- * @brief Registra os comandos do SD
- * no terminal
- */
-esp_err_t cmd_register_sd(void);
+void check_file_exist(FILE *_arq, char *file_name);
 
 /**
  *  @brief Funcao atrelado ao SD
@@ -226,10 +221,7 @@ void app_main(void)
 
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
                 NULL, 1, &handleTaskADS115);
-<<<<<<< HEAD
-=======
     vTaskSuspend(handleTaskADS115);
->>>>>>> SDTerminal
 
     xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTaskSD);
@@ -237,8 +229,6 @@ void app_main(void)
 
     while (1)
     {
-<<<<<<< HEAD
-=======
         if (EventBits_cmd & EVENT_BIT_START_TASKS)
         {
             vTaskResume(handleTaskADS115);
@@ -250,7 +240,6 @@ void app_main(void)
             vTaskSuspend(handleTaskADS115);
         }
 
->>>>>>> SDTerminal
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
@@ -259,12 +248,10 @@ void app_main(void)
 //  FUNCS
 //============================================
 
-int sd_terminal(int argc, char **argv)
+void check_file_exist(FILE *_arq, char *file_name)
 {
-    static uint8_t cnt = 0;
-    for (cnt = 1; cnt < argc; ++cnt)
+    for (uint8_t sufixo = 0; sufixo < UINT8_MAX; ++sufixo)
     {
-<<<<<<< HEAD
         snprintf(file_name, SD_MAX_LEN_FILE_NAME,
                  SD_MOUNT_POINT CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
 
@@ -273,14 +260,27 @@ int sd_terminal(int argc, char **argv)
         {
             snprintf(file_name, SD_MAX_LEN_FILE_NAME,
                      SD_MOUNT_POINT CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
-=======
+
+            return;
+        }
+        fclose(_arq);
+    }
+
+    snprintf(file_name, SD_MAX_LEN_FILE_NAME,
+             SD_MOUNT_POINT CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", 0);
+}
+
+int sd_terminal(int argc, char **argv)
+{
+    static uint8_t cnt = 0;
+    for (cnt = 1; cnt < argc; ++cnt)
+    {
         if (strcmp(argv[cnt], "status") == 0)
         {
             if (EventBits_cmd & EVENT_BIT_SD_OK)
                 printf("%s SD Card ENCONTRADO %s \n", BHGRN, COLOR_RESET);
             else
                 printf("%s SD Card NAO encontrado %s \n", BHRED, COLOR_RESET);
->>>>>>> SDTerminal
 
             if (EventBits_cmd & EVENT_BIT_SD_ON_WRITE)
                 printf("%s Gravando %s \n", BHGRN, COLOR_RESET);
@@ -313,56 +313,6 @@ int sd_terminal(int argc, char **argv)
             clearEventBit(EVENT_BIT_START_TASKS);
     }
 
-<<<<<<< HEAD
-    snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-             SD_MOUNT_POINT CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", 0);
-}
-
-int sd_terminal(int argc, char **argv)
-{
-    static uint8_t cnt = 0;
-    for (cnt = 1; cnt < argc; ++cnt)
-    {
-        if (strcmp(argv[cnt], "status") == 0)
-        {
-            if (EventBits_cmd & EVENT_BIT_SD_OK)
-                printf("%s SD Card ENCONTRADO %s \n", BHGRN, COLOR_RESET);
-            else
-                printf("%s SD Card NAO encontrado %s \n", BHRED, COLOR_RESET);
-
-            if (EventBits_cmd & EVENT_BIT_SD_ON_WRITE)
-                printf("%s Gravando %s \n", BHGRN, COLOR_RESET);
-            else
-                printf("%s Erro na Gravacao %s \n", BHRED, COLOR_RESET);
-        }
-
-        if ((strcmp(argv[cnt], "rename") == 0))
-        {
-            cnt += 1;
-            printf("Rename: %s to ", file_name);
-
-            snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                     SD_MOUNT_POINT "%s.txt", argv[cnt]);
-
-            printf("%s \n", file_name);
-        }
-
-        if ((strcmp(argv[cnt], "check") == 0))
-        {
-            if (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
-                clearEventBit(EVENT_BIT_SD_OK);
-            else
-                setEventBit(EVENT_BIT_SD_OK);
-        }
-
-        if ((strcmp(argv[cnt], "s") == 0))
-            setEventBit(EVENT_BIT_START_TASKS);
-        else if ((strcmp(argv[cnt], "t") == 0))
-            clearEventBit(EVENT_BIT_START_TASKS);
-    }
-
-=======
->>>>>>> SDTerminal
     printf("\n");
     fflush(stdout);
 
@@ -502,11 +452,8 @@ static void vTaskADS1115(void *pvArg)
 
 static void vTaskSD(void *pvArg)
 {
-<<<<<<< HEAD
     check_file_exist(arq, &file_name[0]);
 
-=======
->>>>>>> SDTerminal
     do
     {
         arq = fopen(file_name, "a");
