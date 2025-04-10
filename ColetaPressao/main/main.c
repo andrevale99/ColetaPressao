@@ -36,7 +36,7 @@
 #define EVENT_BIT_SD_ON_WRITE (1 << 1)
 #define EVENT_BIT_SD_OK (1 << 23)
 
-// #define PRINTS_SERIAL
+#define PRINTS_SERIAL
 
 //============================================
 //  VARS GLOBAIS
