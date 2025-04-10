@@ -168,11 +168,11 @@ void app_main(void)
 
     cmd_register_sd();
 
-    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-    //             NULL, 1, &handleTaskADS115);
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+                NULL, 1, &handleTaskADS115);
 
-    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 1, &handleTaskSD);
+    // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTaskSD);
 
     // while (1)
     // {
@@ -280,31 +280,9 @@ static void vTaskADS1115(void *pvArg)
         gptimer_get_raw_count(handleTimer, &(TempoDeAmostragem.valor_contador));
         TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
-        process_pressures(&SistemaData);
+        process_pressures(&SistemaData);    // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTaskSD);
 
-        gptimer_set_raw_count(handleTimer, 0);
-
-        xSemaphoreGive(Semaphore_ProcessADS_to_SD);
-
-        vTaskDelay(pdMS_TO_TICKS(32));
-    }
-}
-
-static void vTaskSD(void *pvArg)
-{
-    FILE *arq = NULL;
-    const char mount_point[] = SD_MOUNT_POINT;
-    char file_name[SD_MAX_LEN_FILE_NAME];
-
-    while (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
-    {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-
-    check_file_exist(arq, &file_name[0]);
-
-    do
-    {
         arq = fopen(file_name, "a");
 
         if (arq != NULL)
