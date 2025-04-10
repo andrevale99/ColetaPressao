@@ -27,7 +27,7 @@
 
 #define SD_BUFFER_SIZE 1024
 
-#define SD_MOUNT_POINT "/"
+#define SD_MOUNT_POINT "/sdcard"
 #define SD_MAX_LEN_FILE_NAME 256
 
 #define CONSOLE_MAX_LEN_CMD 1024
@@ -105,19 +105,6 @@ esp_console_repl_t *repl = NULL;
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
-
-/**
- *  @brief Funcao que ira criar um arquivo com o
- *  sufixo diferente, para nao sobrescrever os arquivos
- *  e difenrenciar qual foi o utlimo arquivo criado.
- *
- *  @param _arq Ponteiro para a variavel do tipo FILE
- *  o qual ira manipular o arquivo.
- *
- *  @param file_name Ponteiro para uma cadeia de caracteres
- *  que ira armazenar o nome do arquivo.
- */
-void check_file_exist(FILE *_arq, char *file_name);
 
 /**
  *  @brief Funcao atrelado ao SD
@@ -248,28 +235,6 @@ void app_main(void)
 //  FUNCS
 //============================================
 
-void check_file_exist(FILE *_arq, char *file_name)
-{
-    for (uint8_t sufixo = 0; sufixo < UINT8_MAX; ++sufixo)
-    {
-        snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                 SD_MOUNT_POINT CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
-
-        _arq = fopen(file_name, "r");
-        if (_arq == NULL)
-        {
-            snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                     SD_MOUNT_POINT CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", sufixo);
-
-            return;
-        }
-        fclose(_arq);
-    }
-
-    snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-             SD_MOUNT_POINT CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME "_%d.txt", 0);
-}
-
 int sd_terminal(int argc, char **argv)
 {
     static uint8_t cnt = 0;
@@ -294,7 +259,7 @@ int sd_terminal(int argc, char **argv)
             printf("Rename: %s to ", file_name);
 
             snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                     SD_MOUNT_POINT "%s.txt", argv[cnt]);
+                     SD_MOUNT_POINT "/%s.txt", argv[cnt]);
 
             printf("%s \n", file_name);
         }
@@ -452,8 +417,6 @@ static void vTaskADS1115(void *pvArg)
 
 static void vTaskSD(void *pvArg)
 {
-    check_file_exist(arq, &file_name[0]);
-
     do
     {
         arq = fopen(file_name, "a");
