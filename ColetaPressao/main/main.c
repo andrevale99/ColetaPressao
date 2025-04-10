@@ -42,8 +42,6 @@
 //  VARS GLOBAIS
 //============================================
 
-struct dirent *dirs = NULL;
-
 struct sistema_t
 {
     int16_t adc0;
