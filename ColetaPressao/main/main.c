@@ -28,12 +28,14 @@
 #define SD_BUFFER_SIZE 1024
 
 #define SD_MOUNT_POINT "/sdcard"
-#define SD_MAX_LEN_FILE_NAME 256
+#define SD_MAX_LEN_FILE_NAME (1 << 12)
 
-#define CONSOLE_MAX_LEN_CMD 1024
+#define CONSOLE_MAX_LEN_CMD (1 << 10)
 
+// Colocar bits de eventos para o ADS
 #define EVENT_BIT_START_TASKS (1 << 0)
 #define EVENT_BIT_SD_ON_WRITE (1 << 1)
+#define EVENT_BIT_SD_FILE_CREATE (1 << 2)
 #define EVENT_BIT_SD_OK (1 << 23)
 
 #define PRINTS_SERIAL
@@ -53,15 +55,14 @@ struct sistema_t
     float p1;
     float p1Total; // Mais a coluna D'agua
     float offset1;
+
+    struct timer_sample_t
+    {
+        uint64_t valor_contador;
+        float tempo_decorrido;
+    } TempoDeAmostragem;
+
 } SistemaData;
-
-struct timer_sample_t
-{
-    uint64_t valor_contador;
-    float tempo_decorrido;
-} TempoDeAmostragem;
-
-char buffer_sd[SD_BUFFER_SIZE];
 
 static struct
 {
@@ -73,12 +74,9 @@ static struct
 } sd_args;
 
 FILE *arq = NULL;
-const char mount_point[] = SD_MOUNT_POINT;
+char buffer_sd[SD_BUFFER_SIZE];
 char file_name[SD_MAX_LEN_FILE_NAME];
-
-/// @brief Semaphore entre o processo dos dados do ADS111X com
-/// a gravcao do SD.
-SemaphoreHandle_t Semaphore_ProcessADS_to_SD = NULL;
+const char mount_point[] = SD_MOUNT_POINT;
 
 /// @brief Bits de eventos para sinalizar ao sistema
 /// o comando que foi digitado no terminal.
@@ -90,8 +88,8 @@ i2c_master_bus_handle_t handleI2Cmaster = NULL;
 
 /// @brief Estruturas para iniciar e montar o protocolo
 /// SPI e o SD para a gravacao, respectivamente.
-esp_vfs_fat_sdmmc_mount_config_t mount_sd;
 sdmmc_card_t *card;
+esp_vfs_fat_sdmmc_mount_config_t mount_sd;
 sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 
@@ -173,13 +171,11 @@ void clearEventBit(uint32_t bit)
 //============================================
 void app_main(void)
 {
-    Semaphore_ProcessADS_to_SD = xSemaphoreCreateBinary();
-
     handleEventBits_cmd = xEventGroupCreate();
     EventBits_cmd = xEventGroupClearBits(handleEventBits_cmd, 0xFFFF);
 
-    TempoDeAmostragem.tempo_decorrido = 0;
-    TempoDeAmostragem.valor_contador = 0;
+    SistemaData.TempoDeAmostragem.tempo_decorrido = 0;
+    SistemaData.TempoDeAmostragem.valor_contador = 0;
 
     I2C_config(&handleI2Cmaster);
     SD_config(&mount_sd, &host, &slot_config);
@@ -208,29 +204,14 @@ void app_main(void)
 
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
                 NULL, 1, &handleTaskADS115);
-    vTaskSuspend(handleTaskADS115);
 
     xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 1, &handleTaskSD);
-    vTaskSuspend(handleTaskSD);
 
-    while (1)
-    {
-        if (EventBits_cmd & EVENT_BIT_START_TASKS)
-        {
-            gptimer_set_raw_count(handleTimer, 0);
-            vTaskResume(handleTaskADS115);
-            vTaskResume(handleTaskSD);
-        }
-        else
-        {
-            gptimer_set_raw_count(handleTimer, 0);
-            vTaskSuspend(handleTaskSD);
-            vTaskSuspend(handleTaskADS115);
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
+    // while (1)
+    // {
+    //     vTaskDelay(pdMS_TO_TICKS(100));
+    // }
 }
 
 //============================================
@@ -239,55 +220,68 @@ void app_main(void)
 
 int sd_terminal(int argc, char **argv)
 {
-    static uint8_t cnt = 0;
-    for (cnt = 1; cnt < argc; ++cnt)
+    static uint8_t cnt_argc = 0;
+    for (cnt_argc = 1; cnt_argc < argc; ++cnt_argc)
     {
-        if (strcmp(argv[cnt], "status") == 0)
+        if (strcmp(argv[cnt_argc], "status") == 0)
         {
             if (EventBits_cmd & EVENT_BIT_SD_OK)
                 printf("%s SD Card ENCONTRADO %s \n", BHGRN, COLOR_RESET);
             else
                 printf("%s SD Card NAO encontrado %s \n", BHRED, COLOR_RESET);
 
+            if (EventBits_cmd & EVENT_BIT_SD_FILE_CREATE)
+                printf("%s Arquivo %s Criado %s\n", BHGRN, file_name, COLOR_RESET);
+            else
+                printf("%s Erro ao criar arquivo %s %s\n", BHRED, file_name, COLOR_RESET);
+
             if (EventBits_cmd & EVENT_BIT_SD_ON_WRITE)
                 printf("%s Gravando %s \n", BHGRN, COLOR_RESET);
             else
-                printf("%s Erro na Gravacao %s \n", BHRED, COLOR_RESET);
-        }
+                printf("%s SEM Gravacao %s \n", BHRED, COLOR_RESET);
+        } // fim do status
 
-        if ((strcmp(argv[cnt], "rename") == 0))
+        if ((strcmp(argv[cnt_argc], "rename") == 0))
         {
-            if (arq != NULL )
+            if (arq != NULL)
                 fclose(arq);
-                
-            cnt += 1;
+
+            cnt_argc += 1;
             printf("Rename: %s to ", file_name);
 
             snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                     SD_MOUNT_POINT "/%s.txt", argv[cnt]);
+                     SD_MOUNT_POINT "/%s.txt", argv[cnt_argc]);
 
             printf("%s \n", file_name);
 
             arq = fopen(file_name, "a");
-            snprintf(buffer_sd, SD_BUFFER_SIZE,
-                     "Tempo(s)\tP0(KPa)\tP0+Coluna(KPa)\tP1(KPa)\tP1+Coluna(KPa)\n");
-            fprintf(arq, buffer_sd);
-            fclose(arq);
-        }
 
-        if ((strcmp(argv[cnt], "check") == 0))
+            if (arq == NULL)
+                clearEventBit(EVENT_BIT_SD_FILE_CREATE);
+            else
+            {
+                setEventBit(EVENT_BIT_SD_FILE_CREATE);
+                snprintf(buffer_sd, SD_BUFFER_SIZE,
+                         "Tempo(s)\tP0(KPa)\tP0+Coluna(KPa)\tP1(KPa)\tP1+Coluna(KPa)\n");
+                fprintf(arq, buffer_sd);
+                fclose(arq);
+            }
+        } // fim do rename
+
+        if ((strcmp(argv[cnt_argc], "check") == 0))
         {
             if (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
                 clearEventBit(EVENT_BIT_SD_OK);
             else
                 setEventBit(EVENT_BIT_SD_OK);
-        }
+        } // fim do check
 
-        if ((strcmp(argv[cnt], "s") == 0))
+        if ((strcmp(argv[cnt_argc], "s") == 0))
             setEventBit(EVENT_BIT_START_TASKS);
-        else if ((strcmp(argv[cnt], "t") == 0))
-            clearEventBit(EVENT_BIT_START_TASKS);
-    }
+        else if ((strcmp(argv[cnt_argc], "t") == 0))
+            clearEventBit(EVENT_BIT_START_TASKS | EVENT_BIT_SD_ON_WRITE);
+
+    } // fim do for
 
     printf("\n");
     fflush(stdout);
@@ -365,12 +359,10 @@ void process_pressures(struct sistema_t *sistema)
 static void vTaskADS1115(void *pvArg)
 {
     ads111x_struct_t ads;
-    esp_err_t checkError = ESP_OK;
 
     do
     {
-        checkError = ads111x_begin(&handleI2Cmaster, ADS111X_ADDR, &ads);
-        if (checkError == ESP_OK)
+        if (ads111x_begin(&handleI2Cmaster, ADS111X_ADDR, &ads) == ESP_OK)
             break;
 
         ESP_LOGE(TAG_ADS, "Erro ao chamar o ADS111X");
@@ -389,38 +381,28 @@ static void vTaskADS1115(void *pvArg)
 
     while (1)
     {
-        checkError = ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
-        if (checkError != ESP_OK)
+        ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
+        ads111x_get_conversion_sigle_ended(&ads);
+        SistemaData.adc0 = ads.conversion;
+
+        ads111x_set_input_mux(ADS111X_MUX_1_GND, &ads);
+        ads111x_get_conversion_sigle_ended(&ads);
+        SistemaData.adc1 = ads.conversion;
+
+        if (!(EventBits_cmd & EVENT_BIT_START_TASKS))
         {
-            ESP_LOGE(TAG_ADS, "Erro ao selecionar a porta INPUT (0) do ADS");
-            clearEventBit(EVENT_BIT_START_TASKS);
+            SistemaData.TempoDeAmostragem.tempo_decorrido = 0;
+            SistemaData.TempoDeAmostragem.valor_contador = 0;
+            gptimer_set_raw_count(handleTimer, 0);
         }
         else
-        {
-            ads111x_get_conversion_sigle_ended(&ads);
-            SistemaData.adc0 = ads.conversion;
-        }
+            gptimer_get_raw_count(handleTimer, &(SistemaData.TempoDeAmostragem.valor_contador));
 
-        checkError = ads111x_set_input_mux(ADS111X_MUX_1_GND, &ads);
-        if (checkError != ESP_OK)
-        {
-            ESP_LOGE(TAG_ADS, "Erro ao selecionar a porta INPUT (1) do ADS");
-            clearEventBit(EVENT_BIT_START_TASKS);
-        }
-        else
-        {
-            ads111x_get_conversion_sigle_ended(&ads);
-            SistemaData.adc1 = ads.conversion;
-        }
-
-        gptimer_get_raw_count(handleTimer, &(TempoDeAmostragem.valor_contador));
-        TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
+        SistemaData.TempoDeAmostragem.tempo_decorrido += SistemaData.TempoDeAmostragem.valor_contador;
 
         process_pressures(&SistemaData);
 
         gptimer_set_raw_count(handleTimer, 0);
-
-        xSemaphoreGive(Semaphore_ProcessADS_to_SD);
 
         vTaskDelay(pdMS_TO_TICKS(32));
     }
@@ -428,44 +410,48 @@ static void vTaskADS1115(void *pvArg)
 
 static void vTaskSD(void *pvArg)
 {
+    snprintf(file_name, SD_MAX_LEN_FILE_NAME, SD_MOUNT_POINT "/nan.txt");
     do
     {
-        arq = fopen(file_name, "a");
+        arq = fopen(file_name, "w");
 
         if (arq != NULL)
+        {
+            setEventBit(EVENT_BIT_SD_FILE_CREATE);
+            fclose(arq);
             break;
+        }
 
-        ESP_LOGE(TAG_SD, "Erro ao criar o arquivo %s", file_name);
         clearEventBit(EVENT_BIT_START_TASKS);
+        clearEventBit(EVENT_BIT_SD_FILE_CREATE);
 
         vTaskDelay(pdMS_TO_TICKS(100));
     } while (1);
 
     while (1)
     {
-        if (!(EventBits_cmd & EVENT_BIT_START_TASKS))
-            vTaskSuspend(handleTaskSD);
-
-        if (xSemaphoreTake(Semaphore_ProcessADS_to_SD, pdMS_TO_TICKS(10)) == pdTRUE)
+        if ((EventBits_cmd & EVENT_BIT_START_TASKS))
         {
             arq = fopen(file_name, "a");
 
             snprintf(buffer_sd, SD_BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-                     (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ), SistemaData.p0, SistemaData.p0Total,
+                     (SistemaData.TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ),
+                     SistemaData.p0, SistemaData.p0Total,
                      SistemaData.p1, SistemaData.p1Total);
 
-            fprintf(arq, buffer_sd);
+            if (fprintf(arq, buffer_sd) > 0)
+                setEventBit(EVENT_BIT_SD_ON_WRITE);
+            else
+                clearEventBit(EVENT_BIT_SD_ON_WRITE);
 
 #ifdef PRINTS_SERIAL
             printf("%s", buffer_sd);
             fflush(stdout);
 #endif
-
             fclose(arq);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(22));
+        vTaskDelay(pdMS_TO_TICKS(32));
     }
-
     fclose(arq);
 }
