@@ -218,11 +218,13 @@ void app_main(void)
     {
         if (EventBits_cmd & EVENT_BIT_START_TASKS)
         {
+            gptimer_set_raw_count(handleTimer, 0);
             vTaskResume(handleTaskADS115);
             vTaskResume(handleTaskSD);
         }
         else
         {
+            gptimer_set_raw_count(handleTimer, 0);
             vTaskSuspend(handleTaskSD);
             vTaskSuspend(handleTaskADS115);
         }
@@ -255,6 +257,9 @@ int sd_terminal(int argc, char **argv)
 
         if ((strcmp(argv[cnt], "rename") == 0))
         {
+            if (arq != NULL )
+                fclose(arq);
+                
             cnt += 1;
             printf("Rename: %s to ", file_name);
 
@@ -262,6 +267,12 @@ int sd_terminal(int argc, char **argv)
                      SD_MOUNT_POINT "/%s.txt", argv[cnt]);
 
             printf("%s \n", file_name);
+
+            arq = fopen(file_name, "a");
+            snprintf(buffer_sd, SD_BUFFER_SIZE,
+                     "Tempo(s)\tP0(KPa)\tP0+Coluna(KPa)\tP1(KPa)\tP1+Coluna(KPa)\n");
+            fprintf(arq, buffer_sd);
+            fclose(arq);
         }
 
         if ((strcmp(argv[cnt], "check") == 0))
@@ -429,12 +440,6 @@ static void vTaskSD(void *pvArg)
 
         vTaskDelay(pdMS_TO_TICKS(100));
     } while (1);
-
-    snprintf(buffer_sd, SD_BUFFER_SIZE,
-             "Tempo(s)\tP0(KPa)\tP0+Coluna(KPa)\tP1(KPa)\tP1+Coluna(KPa)\n");
-    fprintf(arq, buffer_sd);
-
-    fclose(arq);
 
     while (1)
     {
