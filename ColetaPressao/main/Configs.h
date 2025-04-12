@@ -6,7 +6,7 @@
 
 #include <esp_check.h>
 
-#define TIMER_RESOLUTION_HZ (1000000 / 2)
+#define TIMER_RESOLUTION_HZ 1000000
 
 #define LED_SD GPIO_NUM_17
 
@@ -92,14 +92,10 @@ esp_err_t Timer_config(gptimer_handle_t *handle_Timer)
         {
             .clk_src = GPTIMER_CLK_SRC_DEFAULT,
             .direction = GPTIMER_COUNT_UP,
-            .resolution_hz = TIMER_RESOLUTION_HZ, // 1 kHz = 1 ms
+            .resolution_hz = TIMER_RESOLUTION_HZ, // 1 MHz = 1 us
         };
 
     ESP_ERROR_CHECK(gptimer_new_timer(&config, handle_Timer));
-
-    gptimer_set_raw_count(*handle_Timer, 0);
-
-    gptimer_enable(*handle_Timer);
 
     return ESP_OK;
 }
