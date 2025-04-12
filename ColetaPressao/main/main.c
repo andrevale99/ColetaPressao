@@ -56,13 +56,13 @@ struct sistema_t
     float p1Total; // Mais a coluna D'agua
     float offset1;
 
-    struct timer_sample_t
-    {
-        uint64_t valor_contador;
-        float tempo_decorrido;
-    } TempoDeAmostragem;
-
 } SistemaData;
+
+struct timer_sample_t
+{
+    uint64_t valor_contador;
+    float tempo_decorrido;
+} TempoDeAmostragem;
 
 static struct
 {
@@ -82,6 +82,9 @@ const char mount_point[] = SD_MOUNT_POINT;
 /// o comando que foi digitado no terminal.
 EventBits_t EventBits_cmd;
 EventGroupHandle_t handleEventBits_cmd = NULL;
+
+/// @brief Semaphore das Tasks ADS111X e SD
+SemaphoreHandle_t handleSemaphore_ADS_to_SD = NULL;
 
 /// @brief Handle do I2C.
 i2c_master_bus_handle_t handleI2Cmaster = NULL;
@@ -171,11 +174,13 @@ void clearEventBit(uint32_t bit)
 //============================================
 void app_main(void)
 {
+    handleSemaphore_ADS_to_SD = xSemaphoreCreateBinary();
+
     handleEventBits_cmd = xEventGroupCreate();
     EventBits_cmd = xEventGroupClearBits(handleEventBits_cmd, 0xFFFF);
 
-    SistemaData.TempoDeAmostragem.tempo_decorrido = 0;
-    SistemaData.TempoDeAmostragem.valor_contador = 0;
+    TempoDeAmostragem.tempo_decorrido = 0;
+    TempoDeAmostragem.valor_contador = 0;
 
     I2C_config(&handleI2Cmaster);
     SD_config(&mount_sd, &host, &slot_config);
@@ -197,21 +202,16 @@ void app_main(void)
 
     cmd_register_sd();
 
-    if (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
-        clearEventBit(EVENT_BIT_SD_OK);
-    else
-        setEventBit(EVENT_BIT_SD_OK);
+    // if (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_sd, &card) != ESP_OK)
+    //     clearEventBit(EVENT_BIT_SD_OK);
+    // else
+    //     setEventBit(EVENT_BIT_SD_OK);
 
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-                NULL, 1, &handleTaskADS115);
+                NULL, 2, &handleTaskADS115);
 
-    xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 1, &handleTaskSD);
-
-    // while (1)
-    // {
-    //     vTaskDelay(pdMS_TO_TICKS(100));
-    // }
+    // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 1, &handleTaskSD);
 }
 
 //============================================
@@ -277,7 +277,13 @@ int sd_terminal(int argc, char **argv)
         } // fim do check
 
         if ((strcmp(argv[cnt_argc], "s") == 0))
+        {
+            TempoDeAmostragem.tempo_decorrido = 0;
+            TempoDeAmostragem.valor_contador = 0;
+            gptimer_set_raw_count(handleTimer, 0);
+
             setEventBit(EVENT_BIT_START_TASKS);
+        }
         else if ((strcmp(argv[cnt_argc], "t") == 0))
             clearEventBit(EVENT_BIT_START_TASKS | EVENT_BIT_SD_ON_WRITE);
 
@@ -368,12 +374,12 @@ static void vTaskADS1115(void *pvArg)
         ESP_LOGE(TAG_ADS, "Erro ao chamar o ADS111X");
         clearEventBit(EVENT_BIT_START_TASKS);
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     } while (1);
 
     ads111x_set_gain(ADS111X_GAIN_4V096, &ads);
     ads111x_set_mode(ADS111X_MODE_SINGLE_SHOT, &ads);
-    ads111x_set_data_rate(ADS111X_DATA_RATE_32, &ads);
+    ads111x_set_data_rate(ADS111X_DATA_RATE_250, &ads);
 
     set_offset_pressure(&SistemaData, &ads);
 
@@ -381,30 +387,32 @@ static void vTaskADS1115(void *pvArg)
 
     while (1)
     {
-        ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
-        ads111x_get_conversion_sigle_ended(&ads);
-        SistemaData.adc0 = ads.conversion;
-
-        ads111x_set_input_mux(ADS111X_MUX_1_GND, &ads);
-        ads111x_get_conversion_sigle_ended(&ads);
-        SistemaData.adc1 = ads.conversion;
-
-        if (!(EventBits_cmd & EVENT_BIT_START_TASKS))
+        if (EventBits_cmd & EVENT_BIT_START_TASKS)
         {
-            SistemaData.TempoDeAmostragem.tempo_decorrido = 0;
-            SistemaData.TempoDeAmostragem.valor_contador = 0;
+            ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
+            ads111x_get_conversion_sigle_ended(&ads);
+            SistemaData.adc0 = ads.conversion;
+
+            gptimer_get_raw_count(handleTimer, &(TempoDeAmostragem.valor_contador));
+
+            TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
+
+            process_pressures(&SistemaData);
+
             gptimer_set_raw_count(handleTimer, 0);
+
+#ifdef PRINTS_SERIAL
+            snprintf(buffer_sd, SD_BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
+                     (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ),
+                     SistemaData.p0, SistemaData.p0Total,
+                     SistemaData.p1, SistemaData.p1Total);
+            printf("%s", buffer_sd);
+            fflush(stdout);
+#endif
+            xSemaphoreGive(handleSemaphore_ADS_to_SD);
         }
-        else
-            gptimer_get_raw_count(handleTimer, &(SistemaData.TempoDeAmostragem.valor_contador));
-
-        SistemaData.TempoDeAmostragem.tempo_decorrido += SistemaData.TempoDeAmostragem.valor_contador;
-
-        process_pressures(&SistemaData);
-
-        gptimer_set_raw_count(handleTimer, 0);
-
-        vTaskDelay(pdMS_TO_TICKS(32));
+        
+        vTaskDelay(32 / portTICK_PERIOD_MS);
     }
 }
 
@@ -430,12 +438,12 @@ static void vTaskSD(void *pvArg)
 
     while (1)
     {
-        if ((EventBits_cmd & EVENT_BIT_START_TASKS))
+        if (xSemaphoreTake(handleSemaphore_ADS_to_SD, (TickType_t)0))
         {
             arq = fopen(file_name, "a");
 
             snprintf(buffer_sd, SD_BUFFER_SIZE, "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-                     (SistemaData.TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ),
+                     (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ),
                      SistemaData.p0, SistemaData.p0Total,
                      SistemaData.p1, SistemaData.p1Total);
 
@@ -449,9 +457,9 @@ static void vTaskSD(void *pvArg)
             fflush(stdout);
 #endif
             fclose(arq);
-        }
+        } // Fim da gravacao pelo semaphore
 
-        vTaskDelay(pdMS_TO_TICKS(32));
+        vTaskDelay(32 / portTICK_PERIOD_MS);
     }
     fclose(arq);
 }
