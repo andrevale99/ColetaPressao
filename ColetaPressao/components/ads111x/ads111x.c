@@ -4,7 +4,7 @@
 
 #include <memory.h>
 
-#define TIMEOUT_MS 250
+#define TIMEOUT_MS 20
 #define BUFFER_SIZE 3
 
 const char *TAG = "[ADS111X_LIB]";
@@ -17,7 +17,7 @@ esp_err_t ads111x_begin(i2c_master_bus_handle_t *master_handle, uint8_t address,
         {
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
             .device_address = address,
-            .scl_speed_hz = 100000, // 100 kHz
+            .scl_speed_hz = 400000, // 400 kHz
         };
 
     xErrorCheck = i2c_master_bus_add_device(*master_handle, &device, &(ads->dev_handle));
