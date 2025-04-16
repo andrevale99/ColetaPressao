@@ -82,9 +82,10 @@ esp_err_t GPIO_config(void)
 }
 
 /**
- *  @brief Configuração do Timer para contabilizar
- *  o tempo decorrido de um dado para o outro, para
- *  depois ser gravado no SD.
+ * @brief Configuração do Timer
+ * 
+ * @note A resolução padrao do TIMER eh de 1 MHz
+ * (T = 1/1e6 = 1us)
  */
 esp_err_t Timer_config(gptimer_handle_t *handle_Timer)
 {
