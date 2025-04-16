@@ -32,11 +32,7 @@
 
 #define CONSOLE_MAX_LEN_CMD (1 << 10)
 
-// Colocar bits de eventos para o ADS
-#define EVENT_BIT_START_TASKS (1 << 0)
-#define EVENT_BIT_SD_ON_WRITE (1 << 1)
-#define EVENT_BIT_SD_FILE_CREATE (1 << 2)
-#define EVENT_BIT_SD_OK (1 << 23)
+#define ALARM_TIMER_TO_ADS 32000 // 32 ms
 
 #define PRINTS_SERIAL
 
@@ -100,30 +96,6 @@ TaskHandle_t handleTaskADS115 = NULL;
 const char *TAG_ADS = "[ADS111]";
 
 /**
- *  @brief Task para gravar os dados no SD
- *
- *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
- *  configuracao
- */
-static void vTaskSD(void *pvArg);
-TaskHandle_t handleTaskSD = NULL;
-const char *TAG_SD = "[SD]";
-
-/**
- *  @brief Funcao atrelado ao SD
- *
- *  @param argc Quantidade de argumentos
- *  @param argv String dos valores
- */
-int sd_terminal(int argc, char **argv);
-
-/**
- * @brief Registra os comandos do SD
- * no terminal
- */
-esp_err_t cmd_register_sd(void);
-
-/**
  * @brief Calcula o offset para estabilizar a pressao
  * considerando a pressao diferencial, ou seja, ao ligar
  * o sistema o sistema ira considerar a pressao o qual o sensor
@@ -162,12 +134,11 @@ void app_main(void)
     gptimer_event_callbacks_t cbs = {
         .on_alarm = example_timer_on_alarm_cb_v2,
     };
-
     ESP_ERROR_CHECK(gptimer_register_event_callbacks(handleTimer, &cbs, handleSemaphore_to_ADS));
 
     gptimer_alarm_config_t alarm_config2 = {
         .reload_count = 0,
-        .alarm_count = 1000000, // period = 1s
+        .alarm_count = ALARM_TIMER_TO_ADS,
         .flags.auto_reload_on_alarm = true,
     };
     ESP_ERROR_CHECK(gptimer_set_alarm_action(handleTimer, &alarm_config2));
@@ -177,10 +148,7 @@ void app_main(void)
     gptimer_start(handleTimer);
 
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-                NULL, 2, &handleTaskADS115);
-
-    // xTaskCreate(vTaskSD, "PROCESS SD", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 1, &handleTaskSD);
+                NULL, 5, &handleTaskADS115);
 }
 
 //============================================
@@ -191,23 +159,28 @@ static void vTaskADS1115(void *pvArg)
 {
     ads111x_struct_t ads;
 
-    
+    if (ads111x_begin(&handleI2Cmaster, ADS111X_ADDR, &ads) != ESP_OK)
+        ESP_LOGE(TAG_ADS, "Erro ao iniciar o ADS111X");
+    else
+        ESP_LOGI(TAG_ADS, "ADS111X encontrado");
+
+    ads111x_set_data_rate(ADS111X_DATA_RATE_32, &ads);
+    ads111x_set_gain(ADS111X_GAIN_4V096, &ads);
+    ads111x_set_mode(ADS111X_MODE_SINGLE_SHOT, &ads);
+
+    set_offset_pressure(&SistemaData, &ads);
 
     while (1)
     {
-        if (xSemaphoreTake(handleSemaphore_to_ADS, pdMS_TO_TICKS(1)))
+        if (xSemaphoreTake(handleSemaphore_to_ADS, pdMS_TO_TICKS(0)))
         {
+            gptimer_get_raw_count(handleTimer, &(TempoDeAmostragem.valor_contador));
+            TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
+            printf("%0.1f\n", TempoDeAmostragem.tempo_decorrido);
+            fflush(stdout);
         }
-        vTaskDelay(pdMS_TO_TICKS(31));
-    }
-}
-
-static void vTaskSD(void *pvArg)
-{
-    while (1)
-    {
-        vTaskDelay(pdMS_TO_TICKS(32));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
