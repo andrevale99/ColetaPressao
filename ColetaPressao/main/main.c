@@ -23,18 +23,11 @@
 #include "ads111x.h"
 #include "Configs.h"
 
-#define TERMINAL_PROMPT "LabFlu"
-
 #define SD_BUFFER_SIZE 1024
-
 #define SD_MOUNT_POINT "/sdcard"
 #define SD_MAX_LEN_FILE_NAME (1 << 12)
 
-#define CONSOLE_MAX_LEN_CMD (1 << 10)
-
 #define ALARM_TIMER_TO_ADS 32000 // 32 ms
-
-#define PRINTS_SERIAL
 
 //============================================
 //  VARS GLOBAIS
@@ -71,7 +64,7 @@ i2c_master_bus_handle_t handleI2Cmaster = NULL;
 /// @brief Estruturas para iniciar e montar o protocolo
 /// SPI e o SD para a gravacao, respectivamente.
 sdmmc_card_t *card;
-esp_vfs_fat_sdmmc_mount_config_t mount_sd;
+esp_vfs_fat_sdmmc_mount_config_t mount_config_sd;
 sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 
@@ -79,7 +72,7 @@ sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 /// o tempo entre uma gravacao e outra.
 gptimer_handle_t handleTimer = NULL;
 
-SemaphoreHandle_t handleSemaphore_to_ADS = NULL;
+SemaphoreHandle_t handleSemaphore_Alarm_to_ADS = NULL;
 
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
@@ -94,6 +87,16 @@ SemaphoreHandle_t handleSemaphore_to_ADS = NULL;
 static void vTaskADS1115(void *pvArg);
 TaskHandle_t handleTaskADS115 = NULL;
 const char *TAG_ADS = "[ADS111]";
+
+/**
+ *  @brief Task para o SD
+ *
+ *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
+ *  configuracao
+ */
+void vTaskSD(void *pvArg);
+TaskHandle_t handleTaskSD = NULL;
+const char *TAG_SD = "[SD]";
 
 /**
  * @brief Calcula o offset para estabilizar a pressao
@@ -113,28 +116,46 @@ void set_offset_pressure(struct sistema_t *sistema, ads111x_struct_t *ads);
  */
 void process_pressures(struct sistema_t *sistema);
 
+/// @brief Testa se ha SD no sistema
+void check_sd(void);
+
+//============================================
+//  INTERRUPCOES
+//============================================
+
+/**
+ * @brief Interrucao do tipo ALARM para o timer. Usado para
+ * liberar o semaphore para a task relacionado ao ADS para fazer
+ * o processamento dos dados.
+ *
+ * @param timer Handle Timer
+ * @param edata estrutura de dados para fazer o alarm
+ * @param  user_data dado que sera passado para a interrupcao
+ * para ser tratado.
+ */
 static bool IRAM_ATTR example_timer_on_alarm_cb_v2(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
 {
     BaseType_t high_task_awoken = pdFALSE;
-    xSemaphoreGiveFromISR(handleSemaphore_to_ADS, &high_task_awoken);
+    xSemaphoreGiveFromISR(handleSemaphore_Alarm_to_ADS, &high_task_awoken);
     return (high_task_awoken == pdTRUE);
 }
+
 //============================================
 //  MAIN
 //============================================
 void app_main(void)
 {
-    handleSemaphore_to_ADS = xSemaphoreCreateBinary();
+    handleSemaphore_Alarm_to_ADS = xSemaphoreCreateBinary();
 
     I2C_config(&handleI2Cmaster);
-    SD_config(&mount_sd, &host, &slot_config);
+    SD_config(&mount_config_sd, &host, &slot_config);
     GPIO_config();
     Timer_config(&handleTimer);
 
     gptimer_event_callbacks_t cbs = {
         .on_alarm = example_timer_on_alarm_cb_v2,
     };
-    ESP_ERROR_CHECK(gptimer_register_event_callbacks(handleTimer, &cbs, handleSemaphore_to_ADS));
+    ESP_ERROR_CHECK(gptimer_register_event_callbacks(handleTimer, &cbs, handleSemaphore_Alarm_to_ADS));
 
     gptimer_alarm_config_t alarm_config2 = {
         .reload_count = 0,
@@ -144,8 +165,9 @@ void app_main(void)
     ESP_ERROR_CHECK(gptimer_set_alarm_action(handleTimer, &alarm_config2));
 
     gptimer_enable(handleTimer);
-
     gptimer_start(handleTimer);
+
+    check_sd();
 
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
                 NULL, 5, &handleTaskADS115);
@@ -158,6 +180,12 @@ void app_main(void)
 static void vTaskADS1115(void *pvArg)
 {
     ads111x_struct_t ads;
+
+    while (i2c_master_probe(handleI2Cmaster, ADS111X_ADDR, 100))
+    {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP_LOGW(TAG_ADS, "ADS nao encontrado");
+    }
 
     if (ads111x_begin(&handleI2Cmaster, ADS111X_ADDR, &ads) != ESP_OK)
         ESP_LOGE(TAG_ADS, "Erro ao iniciar o ADS111X");
@@ -172,15 +200,37 @@ static void vTaskADS1115(void *pvArg)
 
     while (1)
     {
-        if (xSemaphoreTake(handleSemaphore_to_ADS, pdMS_TO_TICKS(0)))
+        if (xSemaphoreTake(handleSemaphore_Alarm_to_ADS, pdMS_TO_TICKS(0)))
         {
+
+            ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
+            ads111x_get_conversion_sigle_ended(&ads);
+            SistemaData.adc0 = ads.conversion;
+
+            ads111x_set_input_mux(ADS111X_MUX_1_GND, &ads);
+            ads111x_get_conversion_sigle_ended(&ads);
+            SistemaData.adc1 = ads.conversion;
+
+            process_pressures(&SistemaData);
+            
             gptimer_get_raw_count(handleTimer, &(TempoDeAmostragem.valor_contador));
             TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
-            printf("%0.1f\n", TempoDeAmostragem.tempo_decorrido);
+            printf("%0.3f\t%0.2f\t%0.2f\n", 
+            TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, 
+            SistemaData.p0, SistemaData.p1);
+            
             fflush(stdout);
         }
         vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+void vTaskSD(void *pvArg)
+{
+    while(1)
+    {
+
     }
 }
 
@@ -230,4 +280,15 @@ void process_pressures(struct sistema_t *sistema)
 
     sistema->p0 = (((v_0 / 5) - 0.04) / 0.018) + sistema->offset0;
     sistema->p1 = (((v_1 / 5) - 0.04) / 0.018) + sistema->offset1;
+}
+
+void check_sd(void)
+{
+    if (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_config_sd, &card))
+    {
+        ESP_LOGW("[CHECK_SD]", "Erro ao montar o sistema");
+        return;
+    }
+
+    sdmmc_card_print_info(stdout, card);
 }
