@@ -15,9 +15,7 @@
 #include <sdmmc_cmd.h>
 
 #include <esp_vfs_fat.h>
-#include <esp_console.h>
 #include <esp_check.h>
-#include <argtable3/argtable3.h>
 
 #include "Macros.h"
 #include "ads111x.h"
@@ -44,7 +42,6 @@ struct sistema_t
     float p1;
     float p1Total; // Mais a coluna D'agua
     float offset1;
-
 } SistemaData;
 
 struct timer_sample_t
@@ -73,7 +70,7 @@ sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 gptimer_handle_t handleTimer = NULL;
 
 SemaphoreHandle_t handleSemaphore_Alarm_to_ADS = NULL;
-
+QueueHandle_t handleSemaphore_ADS_to_SD = NULL;
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
@@ -117,7 +114,7 @@ void set_offset_pressure(struct sistema_t *sistema, ads111x_struct_t *ads);
 void process_pressures(struct sistema_t *sistema);
 
 /// @brief Testa se ha SD no sistema
-void check_sd(void);
+esp_err_t check_sd(void);
 
 //============================================
 //  INTERRUPCOES
@@ -135,9 +132,9 @@ void check_sd(void);
  */
 static bool IRAM_ATTR example_timer_on_alarm_cb_v2(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
 {
-    BaseType_t high_task_awoken = pdFALSE;
+    BaseType_t high_task_awoken = pdTRUE;
     xSemaphoreGiveFromISR(handleSemaphore_Alarm_to_ADS, &high_task_awoken);
-    return (high_task_awoken == pdTRUE);
+    return high_task_awoken;
 }
 
 //============================================
@@ -146,6 +143,7 @@ static bool IRAM_ATTR example_timer_on_alarm_cb_v2(gptimer_handle_t timer, const
 void app_main(void)
 {
     handleSemaphore_Alarm_to_ADS = xSemaphoreCreateBinary();
+    handleSemaphore_ADS_to_SD = xSemaphoreCreateBinary();
 
     I2C_config(&handleI2Cmaster);
     SD_config(&mount_config_sd, &host, &slot_config);
@@ -167,10 +165,19 @@ void app_main(void)
     gptimer_enable(handleTimer);
     gptimer_start(handleTimer);
 
-    check_sd();
+    if (check_sd() == ESP_OK)
+    {
+        snprintf(file_name, SD_MAX_LEN_FILE_NAME,
+                 SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME ".txt");
+
+        remove(file_name);
+    }
 
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
                 NULL, 5, &handleTaskADS115);
+
+    xTaskCreate(vTaskSD, "SD TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+                NULL, 1, &handleTaskSD);
 }
 
 //============================================
@@ -212,15 +219,11 @@ static void vTaskADS1115(void *pvArg)
             SistemaData.adc1 = ads.conversion;
 
             process_pressures(&SistemaData);
-            
+
             gptimer_get_raw_count(handleTimer, &(TempoDeAmostragem.valor_contador));
             TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
 
-            printf("%0.3f\t%0.2f\t%0.2f\n", 
-            TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ, 
-            SistemaData.p0, SistemaData.p1);
-            
-            fflush(stdout);
+            xSemaphoreGive(handleSemaphore_ADS_to_SD);
         }
         vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -228,9 +231,34 @@ static void vTaskADS1115(void *pvArg)
 
 void vTaskSD(void *pvArg)
 {
-    while(1)
-    {
+    int iBytesEscritos = 0;
 
+    while (1)
+    {
+        if (xSemaphoreTake(handleSemaphore_ADS_to_SD, pdMS_TO_TICKS(0)) == pdTRUE)
+        {
+            arq = fopen(file_name, "a");
+            if (arq != NULL)
+            {
+                snprintf(buffer_sd, SD_BUFFER_SIZE,
+                         "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
+                         (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ),
+                         SistemaData.p0, SistemaData.p0Total,
+                         SistemaData.p1, SistemaData.p1Total);
+
+                iBytesEscritos = fprintf(arq, buffer_sd);
+
+                if (iBytesEscritos < 0)
+                    ESP_LOGW(TAG_SD, "Erro ao gravar no SD");
+                else
+                    ESP_LOGI(TAG_SD, "Bytes escritos: %i", iBytesEscritos);
+
+                fclose(arq);
+            }
+            else
+                ESP_LOGW(TAG_SD, "Erro ao ABRIR o arquivo %s", file_name);
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
@@ -282,13 +310,19 @@ void process_pressures(struct sistema_t *sistema)
     sistema->p1 = (((v_1 / 5) - 0.04) / 0.018) + sistema->offset1;
 }
 
-void check_sd(void)
+esp_err_t check_sd(void)
 {
-    if (esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_config_sd, &card))
+    esp_err_t errCheckSD = ESP_FAIL;
+
+    errCheckSD = esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_config_sd, &card);
+
+    if (errCheckSD != ESP_OK)
     {
         ESP_LOGW("[CHECK_SD]", "Erro ao montar o sistema");
-        return;
+        return errCheckSD;
     }
 
     sdmmc_card_print_info(stdout, card);
+
+    return errCheckSD;
 }
