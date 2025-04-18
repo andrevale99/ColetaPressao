@@ -4,6 +4,7 @@
 #include <driver/i2c_master.h>
 #include <driver/gptimer.h>
 #include <driver/ledc.h>
+#include <driver/pulse_cnt.h>
 
 #include <esp_check.h>
 
@@ -12,6 +13,10 @@
 #define LED_SD GPIO_NUM_17
 
 #define BOMBA_GPIO GPIO_NUM_13
+
+#define PULSE_COUNTER_GPIO GPIO_NUM_14
+#define PULSE_COUNTER_MIN_LIMITE -1
+#define PULSE_COUNTER_MAX_LIMITE (1 << 16)
 
 /**
  *  @brief Funcao de Configuracao do I2C
@@ -124,6 +129,29 @@ esp_err_t PWM_config(void)
         .duty = 0, // Set duty to 0%
         .hpoint = 0};
     ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+
+    return ESP_OK;
+}
+
+esp_err_t PULSE_COUNTER_config(pcnt_unit_handle_t *handle_pcnt)
+{
+    pcnt_unit_config_t unitConfig =
+        {
+            .high_limit = PULSE_COUNTER_MAX_LIMITE,
+            .low_limit = -1,
+        };
+    ESP_ERROR_CHECK(pcnt_new_unit(&unitConfig, handle_pcnt));
+
+    pcnt_channel_handle_t pcnt_chan_a = NULL;
+    pcnt_chan_config_t chan_a_config = {
+        .edge_gpio_num = -1,
+        .level_gpio_num = PULSE_COUNTER_GPIO,
+    };
+    ESP_ERROR_CHECK(pcnt_new_channel(*handle_pcnt, &chan_a_config, &pcnt_chan_a));
+
+    ESP_ERROR_CHECK(pcnt_channel_set_level_action(pcnt_chan_a,
+                                                  PCNT_CHANNEL_LEVEL_ACTION_KEEP,
+                                                  PCNT_CHANNEL_LEVEL_ACTION_HOLD));
 
     return ESP_OK;
 }
