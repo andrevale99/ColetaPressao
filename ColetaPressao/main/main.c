@@ -7,7 +7,6 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
-#include <freertos/event_groups.h>
 
 #include <driver/i2c_master.h>
 #include <driver/gptimer.h>
@@ -130,7 +129,7 @@ esp_err_t check_sd(void);
  * @param  user_data dado que sera passado para a interrupcao
  * para ser tratado.
  */
-static bool IRAM_ATTR example_timer_on_alarm_cb_v2(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
+static bool IRAM_ATTR timer_alarm_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
 {
     BaseType_t high_task_awoken = pdTRUE;
     xSemaphoreGiveFromISR(handleSemaphore_Alarm_to_ADS, &high_task_awoken);
@@ -149,9 +148,10 @@ void app_main(void)
     SD_config(&mount_config_sd, &host, &slot_config);
     GPIO_config();
     Timer_config(&handleTimer);
+    PWM_config();
 
     gptimer_event_callbacks_t cbs = {
-        .on_alarm = example_timer_on_alarm_cb_v2,
+        .on_alarm = timer_alarm_callback,
     };
     ESP_ERROR_CHECK(gptimer_register_event_callbacks(handleTimer, &cbs, handleSemaphore_Alarm_to_ADS));
 
@@ -162,26 +162,30 @@ void app_main(void)
     };
     ESP_ERROR_CHECK(gptimer_set_alarm_action(handleTimer, &alarm_config2));
 
-    gptimer_enable(handleTimer);
-    gptimer_start(handleTimer);
-
-    if (check_sd() == ESP_OK)
-    {
-        snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-                 SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME ".txt");
-
-        remove(file_name);
-    }
-
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
                 NULL, 5, &handleTaskADS115);
 
     xTaskCreate(vTaskSD, "SD TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
                 NULL, 1, &handleTaskSD);
+
+    int16_t cnt = 10;
+    while (1)
+    {
+
+        ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, cnt));
+        ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
+
+        cnt += 1;
+
+        if (cnt > 1023)
+            cnt = 0;
+
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
 
 //============================================
-//  FUNCS
+//  TASKS
 //============================================
 
 static void vTaskADS1115(void *pvArg)
@@ -231,6 +235,16 @@ static void vTaskADS1115(void *pvArg)
 
 void vTaskSD(void *pvArg)
 {
+    if (check_sd() != ESP_OK)
+        vTaskSuspend(handleTaskSD);
+
+    snprintf(file_name, SD_MAX_LEN_FILE_NAME,
+             SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME ".txt");
+
+    // NAO ESQUECER DE RETIRAR ESTA LINHA
+    // NOS CODIGOS FUTUROS (para testes)
+    remove(file_name);
+
     int iBytesEscritos = 0;
 
     while (1)
@@ -262,6 +276,9 @@ void vTaskSD(void *pvArg)
     }
 }
 
+//============================================
+//  FUNCS
+//============================================
 void set_offset_pressure(struct sistema_t *sistema, ads111x_struct_t *ads)
 {
     float v_0 = 0.0;
