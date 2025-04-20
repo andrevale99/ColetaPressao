@@ -49,6 +49,8 @@ struct timer_sample_t
     float tempo_decorrido;
 } TempoDeAmostragem;
 
+int VazaoPulseCounter = 0;
+
 FILE *arq = NULL;
 char buffer_sd[SD_BUFFER_SIZE];
 char file_name[SD_MAX_LEN_FILE_NAME];
@@ -68,8 +70,11 @@ sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 /// o tempo entre uma gravacao e outra.
 gptimer_handle_t handleTimer = NULL;
 
+pcnt_unit_handle_t handlePulseCounter = NULL;
+
 SemaphoreHandle_t handleSemaphore_Alarm_to_ADS = NULL;
-QueueHandle_t handleSemaphore_ADS_to_SD = NULL;
+SemaphoreHandle_t handleSemaphore_ADS_to_SD = NULL;
+QueueHandle_t handleQueue_PulseCounter = NULL;
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
 //============================================
@@ -133,6 +138,11 @@ static bool IRAM_ATTR timer_alarm_callback(gptimer_handle_t timer, const gptimer
 {
     BaseType_t high_task_awoken = pdTRUE;
     xSemaphoreGiveFromISR(handleSemaphore_Alarm_to_ADS, &high_task_awoken);
+
+    pcnt_unit_get_count(handlePulseCounter, &VazaoPulseCounter);
+    xQueueSendFromISR(handleQueue_PulseCounter, &VazaoPulseCounter, pdFALSE);
+    // pcnt_unit_clear_count(handlePulseCounter);
+
     return high_task_awoken;
 }
 
@@ -143,12 +153,14 @@ void app_main(void)
 {
     handleSemaphore_Alarm_to_ADS = xSemaphoreCreateBinary();
     handleSemaphore_ADS_to_SD = xSemaphoreCreateBinary();
+    handleQueue_PulseCounter = xQueueCreate(1, sizeof(int) * 2);
 
     I2C_config(&handleI2Cmaster);
     SD_config(&mount_config_sd, &host, &slot_config);
     GPIO_config();
     Timer_config(&handleTimer);
     PWM_config();
+    PULSE_COUNTER_config(&handlePulseCounter);
 
     gptimer_event_callbacks_t cbs = {
         .on_alarm = timer_alarm_callback,
@@ -161,6 +173,9 @@ void app_main(void)
         .flags.auto_reload_on_alarm = true,
     };
     ESP_ERROR_CHECK(gptimer_set_alarm_action(handleTimer, &alarm_config2));
+
+    gptimer_enable(handleTimer);
+    gptimer_start(handleTimer);
 
     xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
                 NULL, 5, &handleTaskADS115);
@@ -180,7 +195,7 @@ void app_main(void)
         if (cnt > 1023)
             cnt = 0;
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -208,10 +223,11 @@ static void vTaskADS1115(void *pvArg)
     ads111x_set_mode(ADS111X_MODE_SINGLE_SHOT, &ads);
 
     set_offset_pressure(&SistemaData, &ads);
+    ESP_LOGI(TAG_ADS, "Offset finalizado");
 
     while (1)
     {
-        if (xSemaphoreTake(handleSemaphore_Alarm_to_ADS, pdMS_TO_TICKS(0)))
+        if (xSemaphoreTake(handleSemaphore_Alarm_to_ADS, pdMS_TO_TICKS(0)) == pdTRUE)
         {
 
             ads111x_set_input_mux(ADS111X_MUX_0_GND, &ads);
@@ -224,12 +240,9 @@ static void vTaskADS1115(void *pvArg)
 
             process_pressures(&SistemaData);
 
-            gptimer_get_raw_count(handleTimer, &(TempoDeAmostragem.valor_contador));
-            TempoDeAmostragem.tempo_decorrido += TempoDeAmostragem.valor_contador;
-
             xSemaphoreGive(handleSemaphore_ADS_to_SD);
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -255,8 +268,7 @@ void vTaskSD(void *pvArg)
             if (arq != NULL)
             {
                 snprintf(buffer_sd, SD_BUFFER_SIZE,
-                         "%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-                         (TempoDeAmostragem.tempo_decorrido / TIMER_RESOLUTION_HZ),
+                         "%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
                          SistemaData.p0, SistemaData.p0Total,
                          SistemaData.p1, SistemaData.p1Total);
 
