@@ -10,13 +10,13 @@
 
 #define TIMER_RESOLUTION_HZ 1000000
 
-#define LED_SD GPIO_NUM_17
+#define LED_SD GPIO_NUM_26
 
 #define BOMBA_GPIO GPIO_NUM_13
 
 #define PULSE_COUNTER_GPIO GPIO_NUM_14
 #define PULSE_COUNTER_MIN_LIMITE -1
-#define PULSE_COUNTER_MAX_LIMITE (1 << 16)
+#define PULSE_COUNTER_MAX_LIMITE 10000
 
 /**
  *  @brief Funcao de Configuracao do I2C
@@ -80,7 +80,7 @@ esp_err_t GPIO_config(void)
     gpio_config_t config =
         {
             .intr_type = GPIO_INTR_DISABLE,
-            .mode = GPIO_MODE_OUTPUT,
+            .mode = GPIO_MODE_INPUT_OUTPUT,
             .pull_down_en = GPIO_PULLDOWN_DISABLE,
             .pull_up_en = GPIO_PULLUP_DISABLE,
             .pin_bit_mask = (1 << LED_SD),
@@ -138,20 +138,33 @@ esp_err_t PULSE_COUNTER_config(pcnt_unit_handle_t *handle_pcnt)
     pcnt_unit_config_t unitConfig =
         {
             .high_limit = PULSE_COUNTER_MAX_LIMITE,
-            .low_limit = -1,
+            .low_limit = PULSE_COUNTER_MIN_LIMITE,
         };
     ESP_ERROR_CHECK(pcnt_new_unit(&unitConfig, handle_pcnt));
 
+    pcnt_glitch_filter_config_t filter_config = {
+        .max_glitch_ns = 1000,
+    };
+    ESP_ERROR_CHECK(pcnt_unit_set_glitch_filter(*handle_pcnt, &filter_config));
+
     pcnt_channel_handle_t pcnt_chan_a = NULL;
     pcnt_chan_config_t chan_a_config = {
-        .edge_gpio_num = -1,
-        .level_gpio_num = PULSE_COUNTER_GPIO,
+        .edge_gpio_num = PULSE_COUNTER_GPIO,
+        .level_gpio_num = -1,
     };
     ESP_ERROR_CHECK(pcnt_new_channel(*handle_pcnt, &chan_a_config, &pcnt_chan_a));
 
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(pcnt_chan_a,
+                                                 PCNT_CHANNEL_EDGE_ACTION_HOLD,
+                                                 PCNT_CHANNEL_EDGE_ACTION_INCREASE));
+
     ESP_ERROR_CHECK(pcnt_channel_set_level_action(pcnt_chan_a,
-                                                  PCNT_CHANNEL_LEVEL_ACTION_KEEP,
-                                                  PCNT_CHANNEL_LEVEL_ACTION_HOLD));
+                                                  PCNT_CHANNEL_LEVEL_ACTION_HOLD,
+                                                  PCNT_CHANNEL_LEVEL_ACTION_KEEP));
+
+    ESP_ERROR_CHECK(pcnt_unit_enable(*handle_pcnt));
+    ESP_ERROR_CHECK(pcnt_unit_clear_count(*handle_pcnt));
+    ESP_ERROR_CHECK(pcnt_unit_start(*handle_pcnt));
 
     return ESP_OK;
 }
