@@ -177,26 +177,26 @@ void app_main(void)
     gptimer_enable(handleTimer);
     gptimer_start(handleTimer);
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
                 NULL, 5, &handleTaskADS115);
 
-    xTaskCreate(vTaskSD, "SD TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-                NULL, 1, &handleTaskSD);
+    // xTaskCreate(vTaskSD, "SD TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
+    //             NULL, 1, &handleTaskSD);
 
-    int16_t cnt = 10;
-    while (1)
-    {
+    // int16_t cnt = 10;
+    // while (1)
+    // {
 
-        ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, cnt));
-        ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
+    //     ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, cnt));
+    //     ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
 
-        cnt += 1;
+    //     cnt += 1;
 
-        if (cnt > 1023)
-            cnt = 0;
+    //     if (cnt > 1023)
+    //         cnt = 0;
 
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
+    //     vTaskDelay(pdMS_TO_TICKS(100));
+    // }
 }
 
 //============================================
@@ -206,6 +206,7 @@ void app_main(void)
 static void vTaskADS1115(void *pvArg)
 {
     ads111x_struct_t ads;
+    uint64_t cnt_timer = 0;
 
     while (i2c_master_probe(handleI2Cmaster, ADS111X_ADDR, 100))
     {
@@ -239,6 +240,13 @@ static void vTaskADS1115(void *pvArg)
             SistemaData.adc1 = ads.conversion;
 
             process_pressures(&SistemaData);
+
+            printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
+                   0.032 * cnt_timer,
+                   SistemaData.p0, SistemaData.p0Total,
+                   SistemaData.p1, SistemaData.p1Total);
+
+            cnt_timer += 1;
 
             xSemaphoreGive(handleSemaphore_ADS_to_SD);
         }
