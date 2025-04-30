@@ -141,7 +141,7 @@ static bool IRAM_ATTR timer_alarm_callback(gptimer_handle_t timer, const gptimer
 
     pcnt_unit_get_count(handlePulseCounter, &VazaoPulseCounter);
     xQueueSendFromISR(handleQueue_PulseCounter, &VazaoPulseCounter, pdFALSE);
-    // pcnt_unit_clear_count(handlePulseCounter);
+    pcnt_unit_clear_count(handlePulseCounter);
 
     return high_task_awoken;
 }
@@ -207,6 +207,7 @@ static void vTaskADS1115(void *pvArg)
 {
     ads111x_struct_t ads;
     uint64_t cnt_timer = 0;
+    int iVazao = 0;
 
     while (i2c_master_probe(handleI2Cmaster, ADS111X_ADDR, 100))
     {
@@ -241,10 +242,17 @@ static void vTaskADS1115(void *pvArg)
 
             process_pressures(&SistemaData);
 
-            printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-                   0.032 * cnt_timer,
+            // Dividir a quantidade de pulsos por 2 e dividir por 109 
+            // para calcular a vazal em l/min
+            // Pulsos / 2 / 109 [L/min]
+            xQueueReceiveFromISR(handleQueue_PulseCounter, (void *)&iVazao, pdMS_TO_TICKS(0));
+
+            printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t%i\t%0.2f\n",
+                   (0.032 * cnt_timer),
                    SistemaData.p0, SistemaData.p0Total,
-                   SistemaData.p1, SistemaData.p1Total);
+                   SistemaData.p1, SistemaData.p1Total,
+                   iVazao,
+                   (83.774*(float)iVazao-182.41));
 
             cnt_timer += 1;
 
