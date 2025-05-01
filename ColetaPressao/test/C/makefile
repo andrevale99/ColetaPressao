@@ -1,7 +1,7 @@
 GCC = gcc
 CFLAGS = -Wall
 
-MAIN = CheckFile.c
+MAIN = main.c
 OUT = teste.out
 
 all: compile exec clean

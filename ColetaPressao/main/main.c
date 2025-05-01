@@ -26,6 +26,12 @@
 
 #define ALARM_TIMER_TO_ADS 32000 // 32 ms
 
+// Como a aquisicao do sensor de vazao é de acordo com o
+// timer que esta configurador para 32 ms, deve multiplicar
+// a quantidade de pulsos por: 1000ms / 32ms = 31.25
+#define CONVERSAO_DADOS_POR_SEGUNDOS 1000 / 1000
+
+#define VAZAO_L_POR_S(_pulsos) (((float)_pulsos / 2.0 * CONVERSAO_DADOS_POR_SEGUNDOS) / 109.0)
 //============================================
 //  VARS GLOBAIS
 //============================================
@@ -50,6 +56,8 @@ struct timer_sample_t
 } TempoDeAmostragem;
 
 int VazaoPulseCounter = 0;
+short EstouroVazao = 0;
+float fVazao = 0.0;
 
 FILE *arq = NULL;
 char buffer_sd[SD_BUFFER_SIZE];
@@ -139,9 +147,14 @@ static bool IRAM_ATTR timer_alarm_callback(gptimer_handle_t timer, const gptimer
     BaseType_t high_task_awoken = pdTRUE;
     xSemaphoreGiveFromISR(handleSemaphore_Alarm_to_ADS, &high_task_awoken);
 
-    pcnt_unit_get_count(handlePulseCounter, &VazaoPulseCounter);
-    xQueueSendFromISR(handleQueue_PulseCounter, &VazaoPulseCounter, pdFALSE);
-    pcnt_unit_clear_count(handlePulseCounter);
+    EstouroVazao++;
+    if (EstouroVazao > 31)
+    {
+        EstouroVazao = 0;
+        pcnt_unit_get_count(handlePulseCounter, &VazaoPulseCounter);
+        xQueueSendFromISR(handleQueue_PulseCounter, &VazaoPulseCounter, pdFALSE);
+        pcnt_unit_clear_count(handlePulseCounter);
+    }
 
     return high_task_awoken;
 }
@@ -205,6 +218,8 @@ void app_main(void)
 
 static void vTaskADS1115(void *pvArg)
 {
+#define TAM 10
+
     ads111x_struct_t ads;
     uint64_t cnt_timer = 0;
     int iVazao = 0;
@@ -242,17 +257,18 @@ static void vTaskADS1115(void *pvArg)
 
             process_pressures(&SistemaData);
 
-            // Dividir a quantidade de pulsos por 2 e dividir por 109 
+            // Dividir a quantidade de pulsos por 2 e dividir por 109
             // para calcular a vazal em l/min
-            // Pulsos / 2 / 109 [L/min]
+            // (Pulsos / 2 * 31.25) / 109 [L/min]
             xQueueReceiveFromISR(handleQueue_PulseCounter, (void *)&iVazao, pdMS_TO_TICKS(0));
 
-            printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t%i\t%0.2f\n",
+            fVazao = VAZAO_L_POR_S(iVazao);
+
+            printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.3f\t%i\n",
                    (0.032 * cnt_timer),
                    SistemaData.p0, SistemaData.p0Total,
                    SistemaData.p1, SistemaData.p1Total,
-                   iVazao,
-                   (83.774*(float)iVazao-182.41));
+                   fVazao, VazaoPulseCounter);
 
             cnt_timer += 1;
 
@@ -284,9 +300,10 @@ void vTaskSD(void *pvArg)
             if (arq != NULL)
             {
                 snprintf(buffer_sd, SD_BUFFER_SIZE,
-                         "%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
+                         "%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
                          SistemaData.p0, SistemaData.p0Total,
-                         SistemaData.p1, SistemaData.p1Total);
+                         SistemaData.p1, SistemaData.p1Total,
+                         fVazao);
 
                 iBytesEscritos = fprintf(arq, buffer_sd);
 
