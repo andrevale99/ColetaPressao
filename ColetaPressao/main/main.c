@@ -196,20 +196,14 @@ void app_main(void)
     // xTaskCreate(vTaskSD, "SD TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTaskSD);
 
-    // int16_t cnt = 10;
-    // while (1)
-    // {
+    while (1)
+    {
 
-    //     ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, cnt));
-    //     ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
+        ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 512));
+        ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
 
-    //     cnt += 1;
-
-    //     if (cnt > 1023)
-    //         cnt = 0;
-
-    //     vTaskDelay(pdMS_TO_TICKS(100));
-    // }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
 }
 
 //============================================
