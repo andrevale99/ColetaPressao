@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <math.h>
+#include <stdlib.h>
 #include <sys/unistd.h>
 #include <sys/stat.h>
 #include <memory.h>
@@ -174,6 +175,7 @@ void app_main(void)
     Timer_config(&handleTimer);
     PWM_config();
     PULSE_COUNTER_config(&handlePulseCounter);
+    UART_config();
 
     gptimer_event_callbacks_t cbs = {
         .on_alarm = timer_alarm_callback,
@@ -190,30 +192,45 @@ void app_main(void)
     gptimer_enable(handleTimer);
     gptimer_start(handleTimer);
 
-    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-                NULL, 5, &handleTaskADS115);
+    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+    //             NULL, 5, &handleTaskADS115);
 
     // xTaskCreate(vTaskSD, "SD TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
     //             NULL, 1, &handleTaskSD);
 
+    uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
+    int ValorBomba = 0;
     while (1)
     {
 
-        ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 512));
+        // Read data from the UART
+        int len = uart_read_bytes(UART_NUM_0, data, (BUF_SIZE - 1), 950 / portTICK_PERIOD_MS);
+        // Write data back to the UART
+        uart_write_bytes(UART_NUM_0, (const char *)data, len);
+        if (len)
+        {
+            data[len] = '\0';
+            ValorBomba = atoi((char *)data);
+            ESP_LOGI("[APP_MAIN]", "Recv str: %s | valor: %i", (char *)data, ValorBomba);
+        }
+
+        if (ValorBomba > 1024)
+            ValorBomba = 1024;
+        else if (ValorBomba < 0)
+            ValorBomba = 0;
+
+        ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, ValorBomba));
         ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
-
 //============================================
 //  TASKS
 //============================================
 
 static void vTaskADS1115(void *pvArg)
 {
-#define TAM 10
-
     ads111x_struct_t ads;
     uint64_t cnt_timer = 0;
     int iVazao = 0;

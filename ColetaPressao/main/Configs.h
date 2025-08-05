@@ -5,6 +5,7 @@
 #include <driver/gptimer.h>
 #include <driver/ledc.h>
 #include <driver/pulse_cnt.h>
+#include <driver/uart.h>
 
 #include <esp_check.h>
 
@@ -17,6 +18,10 @@
 #define PULSE_COUNTER_GPIO GPIO_NUM_14
 #define PULSE_COUNTER_MIN_LIMITE -1
 #define PULSE_COUNTER_MAX_LIMITE 10000
+
+#define RX GPIO_NUM_3
+#define TX GPIO_NUM_1
+#define BUF_SIZE (1024)
 
 /**
  *  @brief Funcao de Configuracao do I2C
@@ -165,6 +170,24 @@ esp_err_t PULSE_COUNTER_config(pcnt_unit_handle_t *handle_pcnt)
     ESP_ERROR_CHECK(pcnt_unit_enable(*handle_pcnt));
     ESP_ERROR_CHECK(pcnt_unit_clear_count(*handle_pcnt));
     ESP_ERROR_CHECK(pcnt_unit_start(*handle_pcnt));
+
+    return ESP_OK;
+}
+
+esp_err_t UART_config()
+{
+    uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, BUF_SIZE * 2, 0, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, TX, RX, -1, -1));
 
     return ESP_OK;
 }
