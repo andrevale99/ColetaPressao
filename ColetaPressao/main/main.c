@@ -60,20 +60,22 @@ int VazaoPulseCounter = 0;
 short EstouroVazao = 0;
 float fVazao = 0.0;
 
-FILE *arq = NULL;
-char buffer_sd[SD_BUFFER_SIZE];
-char file_name[SD_MAX_LEN_FILE_NAME];
-const char mount_point[] = SD_MOUNT_POINT;
+int iValorBomba = 0;
+
+// FILE *arq = NULL;
+// char buffer_sd[SD_BUFFER_SIZE];
+// char file_name[SD_MAX_LEN_FILE_NAME];
+// const char mount_point[] = SD_MOUNT_POINT;
 
 /// @brief Handle do I2C.
 i2c_master_bus_handle_t handleI2Cmaster = NULL;
 
 /// @brief Estruturas para iniciar e montar o protocolo
 /// SPI e o SD para a gravacao, respectivamente.
-sdmmc_card_t *card;
-esp_vfs_fat_sdmmc_mount_config_t mount_config_sd;
-sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+// sdmmc_card_t *card;
+// esp_vfs_fat_sdmmc_mount_config_t mount_config_sd;
+// sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+// sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
 
 /// @brief Handle para o Timer, usado para contabilizar
 /// o tempo entre uma gravacao e outra.
@@ -82,7 +84,6 @@ gptimer_handle_t handleTimer = NULL;
 pcnt_unit_handle_t handlePulseCounter = NULL;
 
 SemaphoreHandle_t handleSemaphore_Alarm_to_ADS = NULL;
-SemaphoreHandle_t handleSemaphore_ADS_to_SD = NULL;
 QueueHandle_t handleQueue_PulseCounter = NULL;
 //============================================
 //  PROTOTIPOS e VARS_RELACIONADAS
@@ -97,16 +98,6 @@ QueueHandle_t handleQueue_PulseCounter = NULL;
 static void vTaskADS1115(void *pvArg);
 TaskHandle_t handleTaskADS115 = NULL;
 const char *TAG_ADS = "[ADS111]";
-
-/**
- *  @brief Task para o SD
- *
- *  @param pvArg Ponteiro dos argumentos, caso precise fazer alguma
- *  configuracao
- */
-void vTaskSD(void *pvArg);
-TaskHandle_t handleTaskSD = NULL;
-const char *TAG_SD = "[SD]";
 
 /**
  * @brief Calcula o offset para estabilizar a pressao
@@ -125,9 +116,6 @@ void set_offset_pressure(struct sistema_t *sistema, ads111x_struct_t *ads);
  * @param sistema Ponteiro para a estrutura de dados do sistema
  */
 void process_pressures(struct sistema_t *sistema);
-
-/// @brief Testa se ha SD no sistema
-esp_err_t check_sd(void);
 
 //============================================
 //  INTERRUPCOES
@@ -166,11 +154,10 @@ static bool IRAM_ATTR timer_alarm_callback(gptimer_handle_t timer, const gptimer
 void app_main(void)
 {
     handleSemaphore_Alarm_to_ADS = xSemaphoreCreateBinary();
-    handleSemaphore_ADS_to_SD = xSemaphoreCreateBinary();
     handleQueue_PulseCounter = xQueueCreate(1, sizeof(int) * 2);
 
     I2C_config(&handleI2Cmaster);
-    SD_config(&mount_config_sd, &host, &slot_config);
+    // SD_config(&mount_config_sd, &host, &slot_config);
     GPIO_config();
     Timer_config(&handleTimer);
     PWM_config();
@@ -192,11 +179,8 @@ void app_main(void)
     gptimer_enable(handleTimer);
     gptimer_start(handleTimer);
 
-    // xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
-    //             NULL, 5, &handleTaskADS115);
-
-    // xTaskCreate(vTaskSD, "SD TASK", configMINIMAL_STACK_SIZE + 1024 * 5,
-    //             NULL, 1, &handleTaskSD);
+    xTaskCreate(vTaskADS1115, "ADS115 TASK", configMINIMAL_STACK_SIZE + 1024 * 10,
+                NULL, 5, &handleTaskADS115);
 
     uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
     int ValorBomba = 0;
@@ -211,16 +195,20 @@ void app_main(void)
         {
             data[len] = '\0';
             ValorBomba = atoi((char *)data);
-            ESP_LOGI("[APP_MAIN]", "Recv str: %s | valor: %i", (char *)data, ValorBomba);
+
+            // Tensao maxima da bomba limitada em 95%
+            if (ValorBomba > 100)
+                ValorBomba = 95;
+            else if (ValorBomba < 0)
+                ValorBomba = 0;
+
+            iValorBomba = ValorBomba;
+
+            ValorBomba = ValorBomba / 100. * 1024;
+
+            ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, ValorBomba));
+            ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
         }
-
-        if (ValorBomba > 1024)
-            ValorBomba = 1024;
-        else if (ValorBomba < 0)
-            ValorBomba = 0;
-
-        ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, ValorBomba));
-        ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
 
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
@@ -275,60 +263,16 @@ static void vTaskADS1115(void *pvArg)
 
             fVazao = VAZAO_L_POR_S(iVazao);
 
-            printf("%0.3f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.3f\t%i\n",
+            // Tempo | P0 | P0+ColunaDAgua | Vazao | Pulsos(Vazao) | Bomba% | Bomba(bits)
+            // Bomba(bits): a reslução do PWM está entre 0 = 0% e 1024 = 100%
+            printf("%0.3f\t%0.2f\t%0.2f\t%0.3f\t%i\t%i\t%0.2f\n",
                    (0.032 * cnt_timer),
                    SistemaData.p0, SistemaData.p0Total,
-                   SistemaData.p1, SistemaData.p1Total,
-                   fVazao, VazaoPulseCounter);
+                   fVazao, VazaoPulseCounter, iValorBomba, (float)(iValorBomba / 100. * 1024));
 
             cnt_timer += 1;
-
-            xSemaphoreGive(handleSemaphore_ADS_to_SD);
         }
         vTaskDelay(pdMS_TO_TICKS(10));
-    }
-}
-
-void vTaskSD(void *pvArg)
-{
-    if (check_sd() != ESP_OK)
-        vTaskSuspend(handleTaskSD);
-
-    snprintf(file_name, SD_MAX_LEN_FILE_NAME,
-             SD_MOUNT_POINT "/" CONFIG_COLETA_PRESSAO_SD_PREFIX_FILE_NAME ".txt");
-
-    // NAO ESQUECER DE RETIRAR ESTA LINHA
-    // NOS CODIGOS FUTUROS (para testes)
-    remove(file_name);
-
-    int iBytesEscritos = 0;
-
-    while (1)
-    {
-        if (xSemaphoreTake(handleSemaphore_ADS_to_SD, pdMS_TO_TICKS(0)) == pdTRUE)
-        {
-            arq = fopen(file_name, "a");
-            if (arq != NULL)
-            {
-                snprintf(buffer_sd, SD_BUFFER_SIZE,
-                         "%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\n",
-                         SistemaData.p0, SistemaData.p0Total,
-                         SistemaData.p1, SistemaData.p1Total,
-                         fVazao);
-
-                iBytesEscritos = fprintf(arq, buffer_sd);
-
-                if (iBytesEscritos < 0)
-                    ESP_LOGW(TAG_SD, "Erro ao gravar no SD");
-                else
-                    ESP_LOGI(TAG_SD, "Bytes escritos: %i", iBytesEscritos);
-
-                fclose(arq);
-            }
-            else
-                ESP_LOGW(TAG_SD, "Erro ao ABRIR o arquivo %s", file_name);
-        }
-        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
@@ -381,21 +325,4 @@ void process_pressures(struct sistema_t *sistema)
 
     sistema->p0 = (((v_0 / 5) - 0.04) / 0.018) + sistema->offset0;
     sistema->p1 = (((v_1 / 5) - 0.04) / 0.018) + sistema->offset1;
-}
-
-esp_err_t check_sd(void)
-{
-    esp_err_t errCheckSD = ESP_FAIL;
-
-    errCheckSD = esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_config_sd, &card);
-
-    if (errCheckSD != ESP_OK)
-    {
-        ESP_LOGW("[CHECK_SD]", "Erro ao montar o sistema");
-        return errCheckSD;
-    }
-
-    sdmmc_card_print_info(stdout, card);
-
-    return errCheckSD;
 }
