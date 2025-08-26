@@ -197,7 +197,7 @@ void app_main(void)
             ValorBomba = atoi((char *)data);
 
             // Tensao maxima da bomba limitada em 95%
-            if (ValorBomba > 100)
+            if (ValorBomba > 95)
                 ValorBomba = 95;
             else if (ValorBomba < 0)
                 ValorBomba = 0;
