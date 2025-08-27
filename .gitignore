@@ -1,0 +1,7 @@
+build/*
+.vscode/*
+.devconteiner/*
+*.o
+*.hex
+*.elf
+*.aux
